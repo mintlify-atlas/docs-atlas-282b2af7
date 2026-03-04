@@ -1,0 +1,193 @@
+---
+title: Architecture Overview
+description: High-level architecture of Craft Agents monorepo structure and key technologies
+---
+
+## Monorepo Structure
+
+Craft Agents is organized as a **Bun-powered monorepo** using workspace packages. The codebase is split into two main directories:
+
+```
+craft-agent/
+├── apps/
+│   ├── electron/              # Desktop GUI (primary app)
+│   └── viewer/                # Session sharing viewer
+└── packages/
+    ├── core/                  # Shared TypeScript types
+    ├── shared/                # Business logic & utilities
+    ├── pi-agent-server/       # Pi SDK subprocess
+    ├── session-mcp-server/    # Session MCP server
+    ├── session-tools-core/    # Session tool definitions
+    └── ui/                    # Shared UI components
+```
+
+<Note>
+  The monorepo uses **workspace packages** (`workspace:*`) to share code between apps and packages without publishing to npm.
+</Note>
+
+## Apps vs Packages
+
+### Apps Directory
+
+Contains user-facing applications:
+
+- **`electron/`** - Primary desktop application built with Electron, React, and Vite
+- **`viewer/`** - Web-based session sharing viewer for public session links
+
+### Packages Directory
+
+Contains reusable libraries and internal services:
+
+| Package | Purpose |
+|---------|----------|
+| `@craft-agent/core` | Shared TypeScript types and interfaces |
+| `@craft-agent/shared` | Business logic (agent, auth, config, MCP) |
+| `@craft-agent/ui` | Shared React components with shadcn/ui |
+| `@craft-agent/pi-agent-server` | Out-of-process Pi agent server |
+| `@craft-agent/session-mcp-server` | MCP server for session introspection |
+| `@craft-agent/session-tools-core` | Core session tool definitions |
+
+<Card title="Learn More" icon="arrow-right" href="./packages">
+  Deep dive into the packages architecture and exports
+</Card>
+
+## Tech Stack
+
+Craft Agents is built with modern, high-performance technologies:
+
+### Runtime & Build
+
+| Technology | Usage |
+|------------|-------|
+| **[Bun](https://bun.sh/)** | JavaScript runtime and package manager |
+| **[esbuild](https://esbuild.github.io/)** | Main process bundler (fast, native) |
+| **[Vite](https://vitejs.dev/)** | Renderer process dev server and bundler |
+
+### Desktop & UI
+
+| Technology | Usage |
+|------------|-------|
+| **[Electron](https://www.electronjs.org/)** | Desktop app framework (native APIs) |
+| **[React 18](https://react.dev/)** | UI framework with Hooks |
+| **[shadcn/ui](https://ui.shadcn.com/)** | Radix UI + Tailwind CSS components |
+| **[Tailwind CSS v4](https://tailwindcss.com/)** | Utility-first styling |
+| **[Jotai](https://jotai.org/)** | Atomic state management |
+| **[Motion](https://motion.dev/)** | Animation library |
+
+### AI & Agent SDKs
+
+<CardGroup cols={2}>
+  <Card title="Claude Agent SDK" icon="robot">
+    Powers Anthropic, OpenRouter, and custom endpoints
+  </Card>
+  <Card title="Pi SDK" icon="pi">
+    Powers Google AI Studio, ChatGPT Plus, and GitHub Copilot
+  </Card>
+</CardGroup>
+
+| Technology | Usage |
+|------------|-------|
+| **[@anthropic-ai/claude-agent-sdk](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk)** | Claude-based agent backend |
+| **[@mariozechner/pi-coding-agent](https://www.npmjs.com/package/@mariozechner/pi-coding-agent)** | Pi-based agent backend |
+| **[@modelcontextprotocol/sdk](https://modelcontextprotocol.io/)** | MCP server integration |
+
+<Card title="Agent Backends" icon="swap" href="./agent-backends">
+  Learn how Craft Agents routes between Claude and Pi backends
+</Card>
+
+## Key Technologies
+
+### Electron Architecture
+
+Craft Agents uses Electron's **multi-process architecture**:
+
+- **Main Process** - Node.js backend with full system access
+- **Renderer Process** - Chromium frontend (isolated, sandboxed)
+- **Preload Scripts** - Context bridge between main and renderer
+
+<Card title="Electron Deep Dive" icon="window" href="./electron-app">
+  Explore IPC channels, window management, and build process
+</Card>
+
+### Configuration Storage
+
+All user data lives in `~/.craft-agent/`:
+
+```
+~/.craft-agent/
+├── config.json              # Workspaces, LLM connections
+├── credentials.enc          # AES-256-GCM encrypted secrets
+├── preferences.json         # User preferences
+├── theme.json               # App-level theme
+└── workspaces/
+    └── {id}/
+        ├── config.json      # Workspace settings
+        ├── theme.json       # Workspace theme override
+        ├── sessions/        # Session data (JSONL)
+        ├── sources/         # MCP servers & API configs
+        ├── skills/          # Custom agent skills
+        └── automations.json # Event-driven automations
+```
+
+<Accordion title="Why not a database?">
+  File-based storage keeps the architecture simple and **agent-editable**. The agent can directly read and modify its own configuration using filesystem tools, making it truly "agent-native software."
+</Accordion>
+
+### Credentials Security
+
+All sensitive credentials (API keys, OAuth tokens) are stored in an **AES-256-GCM encrypted file** at `~/.craft-agent/credentials.enc`. The encryption key is derived from system-specific entropy.
+
+### Session Persistence
+
+Sessions are stored as **JSONL files** (JSON Lines format):
+
+- One line per message
+- Streaming-friendly (append-only)
+- Easy to debug and inspect
+- Portable across systems
+
+## Development Workflow
+
+<CodeGroup>
+
+```bash Hot Reload Development
+bun run electron:dev
+```
+
+```bash Build and Run
+bun run electron:start
+```
+
+```bash Type Check All
+bun run typecheck:all
+```
+
+```bash Test All Packages
+bun test
+```
+
+</CodeGroup>
+
+### Debug Logging
+
+Logs are automatically written in development:
+
+- **macOS:** `~/Library/Logs/@craft-agent/electron/main.log`
+- **Windows:** `%APPDATA%\@craft-agent\electron\logs\main.log`
+- **Linux:** `~/.config/@craft-agent/electron/logs/main.log`
+
+Launch with `-- --debug` flag to enable verbose logging in production builds.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Electron App" icon="window" href="./electron-app">
+    Main/preload/renderer processes and IPC
+  </Card>
+  <Card title="Packages" icon="box" href="./packages">
+    Core and shared package exports
+  </Card>
+  <Card title="Agent Backends" icon="swap" href="./agent-backends">
+    Claude vs Pi SDK routing
+  </Card>
+</CardGroup>

@@ -1,0 +1,614 @@
+---
+title: 'Agent Backends'
+description: 'Provider-agnostic agent implementations with BaseAgent class'
+icon: 'robot'
+---
+
+## Overview
+
+Craft Agents supports **multiple AI providers** through a unified `AgentBackend` interface. The `BaseAgent` abstract class provides shared functionality, while provider-specific implementations handle SDK integration.
+
+<CardGroup cols={3}>
+  <Card title="Claude Agent" icon="c" color="#8B5CF6">
+    Anthropic Claude via Claude Agent SDK
+  </Card>
+  <Card title="Pi Agent" icon="p" color="#8B5CF6">
+    Pi coding agents via subprocess
+  </Card>
+  <Card title="OpenAI" icon="o" color="#8B5CF6">
+    OpenAI models (planned)
+  </Card>
+</CardGroup>
+
+## Architecture
+
+### BaseAgent Class
+
+All agent backends extend the `BaseAgent` abstract class:
+
+```typescript
+import { BaseAgent } from '@craft-agent/shared/agent';
+import type { AgentBackend, BackendConfig } from '@craft-agent/shared/agent/backend';
+
+/**
+ * Abstract base class for agent backends.
+ * 
+ * Provides:
+ * - Common state management (model, thinking, workspace, session)
+ * - Core module delegation (PermissionManager, SourceManager, etc.)
+ * - Callback declarations for UI integration
+ * 
+ * Subclasses must implement:
+ * - chat(): Provider-specific agentic loop
+ * - abort(): Provider-specific abort handling
+ * - respondToPermission(): Permission resolution
+ * - runMiniCompletion(): Simple text completion
+ * - queryLlm(): LLM query for call_llm tool
+ */
+abstract class BaseAgent implements AgentBackend {
+  // Backend identity
+  protected abstract backendName: string;
+  protected _supportsBranching: boolean = true;
+  
+  // Configuration
+  protected config: BackendConfig;
+  protected workingDirectory: string;
+  protected _sessionId: string;
+  protected _model: string;
+  protected _thinkingLevel: ThinkingLevel;
+  
+  // Core modules
+  protected permissionManager: PermissionManager;
+  protected sourceManager: SourceManager;
+  protected promptBuilder: PromptBuilder;
+  protected usageTracker: UsageTracker;
+  protected prerequisiteManager: PrerequisiteManager;
+  protected automationSystem?: AutomationSystem;
+  
+  // Abstract methods
+  abstract chat(message: string): AsyncGenerator<AgentEvent>;
+  abstract abort(reason?: string): Promise<void>;
+  abstract respondToPermission(requestId: string, allowed: boolean): void;
+  abstract runMiniCompletion(prompt: string): Promise<string | null>;
+  abstract queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult>;
+}
+```
+
+### Core Modules
+
+The `BaseAgent` delegates functionality to specialized managers:
+
+<AccordionGroup>
+  <Accordion title="PermissionManager">
+    Handles permission evaluation, mode management, and command whitelisting:
+    
+    ```typescript
+    class PermissionManager {
+      getPermissionMode(): PermissionMode;
+      setPermissionMode(mode: PermissionMode): void;
+      evaluateToolPermission(toolName: string, input: unknown): {
+        allowed: boolean;
+        reason?: string;
+      };
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="SourceManager">
+    Tracks active/inactive sources and formats state for context injection:
+    
+    ```typescript
+    class SourceManager {
+      getAllSources(): LoadedSource[];
+      setAllSources(sources: LoadedSource[]): void;
+      getActiveSlugs(): Set<string>;
+      updateActiveState(mcpSlugs: string[], apiSlugs: string[]): void;
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="PromptBuilder">
+    Builds context blocks for user messages:
+    
+    ```typescript
+    class PromptBuilder {
+      buildUserMessage(content: string, options: {
+        sources: LoadedSource[];
+        clarifications?: string;
+        sessionPlansPath?: string;
+      }): string;
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="UsageTracker">
+    Tracks token usage and context window:
+    
+    ```typescript
+    class UsageTracker {
+      recordUsage(inputTokens: number, outputTokens: number): void;
+      getTotalUsage(): TokenUsage;
+      isApproachingContextLimit(): boolean;
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="PrerequisiteManager">
+    Blocks source tool calls until guide.md is read:
+    
+    ```typescript
+    class PrerequisiteManager {
+      registerSourcePrerequisites(guidePaths: string[]): void;
+      checkToolAllowed(toolName: string): { allowed: boolean; reason?: string };
+      markFileRead(filePath: string): void;
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## ClaudeAgent
+
+**Provider:** Anthropic Claude  
+**SDK:** `@anthropic-ai/claude-agent-sdk`  
+**Process:** In-process
+
+```typescript
+import { ClaudeAgent } from '@craft-agent/shared/agent';
+import type { BackendConfig } from '@craft-agent/shared/agent/backend';
+
+const agent = new ClaudeAgent(config, DEFAULT_MODEL);
+
+// Chat with streaming events
+for await (const event of agent.chat('Refactor this function')) {
+  if (event.type === 'text') {
+    console.log(event.text);
+  } else if (event.type === 'tool_start') {
+    console.log(`Tool: ${event.toolName}`);
+  }
+}
+```
+
+### Features
+
+- **Native SDK tools** - Session-scoped tools run in-process
+- **Prompt caching** - Automatic context caching for cost savings
+- **Extended thinking** - Support for extended_thinking beta
+- **Session branching** - Create branch sessions from conversation history
+- **OAuth support** - Claude Max OAuth via Anthropic
+
+### Configuration
+
+```typescript
+interface ClaudeBackendConfig extends BackendConfig {
+  workspace: Workspace;
+  session: SessionConfig;
+  model: string;                    // e.g., 'claude-opus-4-20250514'
+  thinkingLevel: ThinkingLevel;     // 'low' | 'medium' | 'high'
+  debugMode?: boolean;
+  systemPromptPreset?: string;      // 'default' | 'mini'
+  mcpPool: McpClientPool;           // Source connection pool
+  automationSystem?: AutomationSystem;
+}
+```
+
+### Authentication
+
+<CodeGroup>
+```typescript API Key
+import { getCredentialManager } from '@craft-agent/shared/credentials';
+
+const credManager = getCredentialManager();
+const apiKey = credManager.get('anthropic_api_key::global');
+
+const agent = new ClaudeAgent({
+  ...config,
+  authType: 'api_key',
+  apiKey
+});
+```
+
+```typescript OAuth
+import { getValidClaudeOAuthToken } from '@craft-agent/shared/auth';
+
+const token = await getValidClaudeOAuthToken();
+
+const agent = new ClaudeAgent({
+  ...config,
+  authType: 'oauth_token',
+  accessToken: token.accessToken
+});
+```
+</CodeGroup>
+
+### Model Configuration
+
+```typescript
+// Get current model
+const model = agent.getModel();
+console.log(model); // 'claude-opus-4-20250514'
+
+// Switch model mid-session
+agent.setModel('claude-sonnet-4-20250514');
+```
+
+<Note>
+Model switching is **instant** - no need to recreate the agent. The next message will use the new model.
+</Note>
+
+### Thinking Levels
+
+```typescript
+type ThinkingLevel = 'low' | 'medium' | 'high';
+
+// Set thinking level
+agent.setThinkingLevel('high');
+
+// Thinking token allocation
+const thinkingTokens = {
+  low: 1000,
+  medium: 5000,
+  high: 10000
+};
+```
+
+<Info>
+**Extended thinking** uses the `extended_thinking` beta feature for deep reasoning tasks.
+</Info>
+
+## PiAgent
+
+**Provider:** Pi coding agents  
+**SDK:** `@mariozechner/pi-coding-agent`  
+**Process:** Out-of-process (subprocess)
+
+```typescript
+import { PiAgent } from '@craft-agent/shared/agent';
+
+const agent = new PiAgent(config, DEFAULT_MODEL);
+
+// Chat with streaming events
+for await (const event of agent.chat('Add error handling')) {
+  // Same event types as ClaudeAgent
+}
+```
+
+### Subprocess Architecture
+
+Pi agents run in a separate Node.js subprocess:
+
+```
+┌─────────────────────────────────────────┐
+│ Electron Main Process                    │
+│                                          │
+│  PiAgent (facade)                        │
+│    │                                     │
+│    ├─ Spawns subprocess                  │
+│    ├─ Sends JSONL commands via stdin    │
+│    └─ Receives events via stdout        │
+└─────────────────────────────────────────┘
+              │
+              │ stdio (JSONL)
+              ▼
+┌─────────────────────────────────────────┐
+│ Pi Agent Server (subprocess)             │
+│                                          │
+│  packages/pi-agent-server/               │
+│    ├─ Pi SDK integration                 │
+│    ├─ Tool execution                     │
+│    └─ Event forwarding                   │
+└─────────────────────────────────────────┘
+```
+
+**Why subprocess?**
+
+- Pi SDK is **ESM-only** with heavy dependencies
+- Avoids bundling conflicts in Electron main process
+- Isolates Pi SDK failures from main app
+
+### Features
+
+- **Native steering** - Redirect agent mid-stream with `steer()`
+- **Session branching** - Fork conversations at any point
+- **Auto-compaction** - Automatic context window management
+- **Subprocess isolation** - Crashes don't affect main app
+
+### Steering
+
+Pi agents support **native steering** to redirect mid-execution:
+
+```typescript
+// Start a task
+const chatGenerator = agent.chat('Refactor the login system');
+
+// Start consuming events
+for await (const event of chatGenerator) {
+  if (event.type === 'tool_start' && event.toolName === 'Bash') {
+    // Redirect to a different approach
+    agent.redirect('Actually, let\'s just add comments for now');
+    break;
+  }
+}
+```
+
+<Note>
+Steering is **instantaneous** - the agent pivots without aborting the current turn.
+</Note>
+
+## AgentBackend Interface
+
+```typescript
+import type { AgentBackend } from '@craft-agent/shared/agent/backend';
+
+interface AgentBackend {
+  // Chat
+  chat(message: string, attachments?: FileAttachment[], options?: ChatOptions): AsyncGenerator<AgentEvent>;
+  abort(reason?: string): Promise<void>;
+  forceAbort(reason: AbortReason): void;
+  redirect(message: string): boolean;
+  isProcessing(): boolean;
+  
+  // Model configuration
+  getModel(): string;
+  setModel(model: string): void;
+  getThinkingLevel(): ThinkingLevel;
+  setThinkingLevel(level: ThinkingLevel): void;
+  
+  // Permissions
+  getPermissionMode(): PermissionMode;
+  setPermissionMode(mode: PermissionMode): void;
+  cyclePermissionMode(): PermissionMode;
+  respondToPermission(requestId: string, allowed: boolean, alwaysAllow?: boolean): void;
+  
+  // Workspace & session
+  getWorkspace(): Workspace;
+  setWorkspace(workspace: Workspace): void;
+  getSessionId(): string | null;
+  setSessionId(sessionId: string | null): void;
+  clearHistory(): void;
+  updateWorkingDirectory(path: string): void;
+  
+  // Sources
+  setSourceServers(mcpServers: Record<string, SdkMcpServerConfig>, apiServers: Record<string, unknown>): Promise<void>;
+  getActiveSourceSlugs(): string[];
+  getAllSources(): LoadedSource[];
+  setAllSources(sources: LoadedSource[]): void;
+  
+  // Utilities
+  runMiniCompletion(prompt: string): Promise<string | null>;
+  queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult>;
+  generateTitle(message: string): Promise<string | null>;
+  
+  // Lifecycle
+  destroy(): void;
+}
+```
+
+## Agent Events
+
+All backends emit standardized `AgentEvent` types:
+
+```typescript
+import type { AgentEvent } from '@craft-agent/core/types';
+
+type AgentEvent =
+  | { type: 'text'; text: string }
+  | { type: 'tool_start'; toolName: string; input: unknown; displayMeta?: ToolDisplayMeta }
+  | { type: 'tool_result'; result: string; isError: boolean }
+  | { type: 'thinking_start'; thinkingTokens?: number }
+  | { type: 'thinking_content'; content: string }
+  | { type: 'permission_request'; requestId: string; toolName: string; description: string }
+  | { type: 'usage'; inputTokens: number; outputTokens: number; cacheCreationTokens?: number }
+  | { type: 'complete' }
+  | { type: 'error'; message: string; code?: string };
+```
+
+### Consuming Events
+
+```typescript
+for await (const event of agent.chat(message)) {
+  switch (event.type) {
+    case 'text':
+      console.log(event.text);
+      break;
+    case 'tool_start':
+      console.log(`[Tool] ${event.toolName}`);
+      break;
+    case 'tool_result':
+      console.log(`Result: ${event.result}`);
+      break;
+    case 'permission_request':
+      // Show permission dialog
+      await showPermissionDialog(event);
+      break;
+    case 'complete':
+      console.log('Turn complete');
+      break;
+    case 'error':
+      console.error(event.message);
+      break;
+  }
+}
+```
+
+## Source Integration
+
+Agents connect to sources via the **McpClientPool**:
+
+```typescript
+import { McpClientPool } from '@craft-agent/shared/mcp';
+
+// Create pool
+const pool = new McpClientPool();
+
+// Configure agent with pool
+const agent = new ClaudeAgent({
+  ...config,
+  mcpPool: pool
+});
+
+// Sync sources
+const mcpServers = {
+  linear: {
+    command: 'npx',
+    args: ['-y', '@linear/mcp'],
+    env: { LINEAR_API_KEY: apiKey }
+  }
+};
+
+await agent.setSourceServers(mcpServers, {});
+```
+
+<Card title="MCP Client Pool" icon="server" href="/development/architecture/agent-backends">
+  Learn about the centralized source connection pool
+</Card>
+
+## Callbacks
+
+Agents use callbacks for UI integration:
+
+```typescript
+// Permission requests
+agent.onPermissionRequest = (request) => {
+  showPermissionDialog(request);
+};
+
+// Plan submissions
+agent.onPlanSubmitted = (planPath) => {
+  const plan = loadPlanFromPath(planPath);
+  showPlanCard(plan);
+};
+
+// Auth requests
+agent.onAuthRequest = (request) => {
+  showAuthDialog(request);
+};
+
+// Source changes
+agent.onSourceChange = (slug, source) => {
+  updateSourceList(slug, source);
+};
+
+// Usage updates
+agent.onUsageUpdate = (update) => {
+  updateTokenDisplay(update);
+};
+```
+
+## Mini Agent Mode
+
+Agents can run in **mini mode** for lightweight tasks:
+
+```typescript
+// Configure mini agent
+const agent = new ClaudeAgent({
+  ...config,
+  systemPromptPreset: 'mini'
+});
+
+const miniConfig = agent.getMiniAgentConfig();
+console.log(miniConfig);
+// {
+//   enabled: true,
+//   tools: ['Read', 'Edit', 'Write', 'Glob', 'Grep', 'Bash'],
+//   mcpServerKeys: ['session'],
+//   minimizeThinking: true
+// }
+```
+
+**Characteristics:**
+
+- Limited tool set (basic file operations)
+- Minimal thinking tokens (fast responses)
+- Session MCP only (no external sources)
+- Ideal for quick edits and config changes
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use BaseAgent for New Backends">
+    Extend `BaseAgent` instead of implementing `AgentBackend` from scratch:
+    
+    ```typescript
+    import { BaseAgent } from '@craft-agent/shared/agent';
+    
+    class MyCustomAgent extends BaseAgent {
+      protected backendName = 'MyCustom';
+      
+      async *chatImpl(message: string): AsyncGenerator<AgentEvent> {
+        // Your implementation
+      }
+      
+      async abort(reason?: string): Promise<void> {
+        // Your abort logic
+      }
+      
+      // ... implement other abstract methods
+    }
+    ```
+    
+    This gives you:
+    - Permission management
+    - Source tracking
+    - Usage tracking
+    - Config watching
+    - Recovery handling
+  </Accordion>
+  
+  <Accordion title="Handle Errors Gracefully">
+    Always catch and emit error events:
+    
+    ```typescript
+    try {
+      // Agent operation
+    } catch (error) {
+      yield {
+        type: 'error',
+        message: error.message,
+        code: 'OPERATION_FAILED'
+      };
+    } finally {
+      yield { type: 'complete' };
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Destroy Agents When Done">
+    Always clean up agent resources:
+    
+    ```typescript
+    try {
+      for await (const event of agent.chat(message)) {
+        // Handle events
+      }
+    } finally {
+      agent.destroy();
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Subprocess for ESM SDKs">
+    If integrating an ESM-only SDK, use the subprocess pattern:
+    
+    1. Create a server package (like `pi-agent-server`)
+    2. Spawn subprocess from main agent class
+    3. Communicate via JSONL over stdio
+    4. Forward events to main process
+  </Accordion>
+</AccordionGroup>
+
+## Related Concepts
+
+<CardGroup cols={2}>
+  <Card title="Sessions" icon="messages" href="/concepts/sessions">
+    Session lifecycle and agent binding
+  </Card>
+  <Card title="Permissions" icon="shield" href="/features/permissions/modes">
+    Permission modes and safety rules
+  </Card>
+  <Card title="Sources" icon="plug" href="/features/sources/overview">
+    MCP servers and API connections
+  </Card>
+  <Card title="BaseAgent Source" icon="code" href="https://github.com/craft-ai/craft-agent">
+    View the BaseAgent implementation
+  </Card>
+</CardGroup>

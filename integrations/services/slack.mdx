@@ -1,0 +1,413 @@
+---
+title: 'Slack Integration'
+description: 'Set up Slack OAuth for workspace integration and user authentication'
+icon: 'slack'
+---
+
+<Note>
+Slack OAuth credentials are **baked into the build** at compile time. For custom builds, you'll need to create your own Slack app and set environment variables.
+</Note>
+
+## Overview
+
+Craft Agents integrates with Slack using OAuth 2.0 for **user authentication** (not bot installation). This allows the agent to post messages as you, read channels, and access workspace data.
+
+**Key Features:**
+
+- Post messages as the authenticated user
+- Read channel history and messages
+- Access direct messages and group chats
+- Search workspace content
+- Read and write files
+- React to messages
+
+## Prerequisites
+
+- A Slack workspace (free or paid)
+- Admin access to create Slack apps (or use the built-in credentials)
+- HTTPS redirect URI (uses Cloudflare Worker relay)
+
+## Using Built-In Credentials
+
+If you're using the official Craft Agents build, OAuth credentials are already configured. Simply:
+
+1. Tell the agent: `Connect to my Slack workspace`
+2. Click the OAuth link when prompted
+3. Authorize the app in your browser
+4. Return to Craft Agent
+
+Your Slack access token will be stored encrypted locally.
+
+## Custom Slack App Setup
+
+<Warning>
+Only needed if you're building Craft Agents from source or creating a custom integration.
+</Warning>
+
+<Steps>
+
+<Step title="Create a Slack App">
+
+1. Go to [Slack API: Your Apps](https://api.slack.com/apps)
+2. Click **Create New App**
+3. Choose **From scratch**
+4. **App Name**: e.g., "Craft Agent"
+5. **Workspace**: Select your development workspace
+6. Click **Create App**
+
+</Step>
+
+<Step title="Configure OAuth Settings">
+
+1. In your app settings, go to **OAuth & Permissions**
+2. Scroll to **Redirect URLs**
+3. Click **Add New Redirect URL**
+4. Enter: `https://agents.craft.do/auth/slack/callback`
+   - This Cloudflare Worker relay redirects to `http://localhost:{port}/callback`
+5. Click **Add**
+6. Click **Save URLs**
+
+<Note>
+Slack requires HTTPS for OAuth redirects. The relay at `agents.craft.do` forwards the callback to your local machine.
+</Note>
+
+</Step>
+
+<Step title="Add User Scopes">
+
+Still in **OAuth & Permissions**, scroll to **Scopes** → **User Token Scopes**:
+
+**For full workspace access**, add these scopes:
+
+<CodeGroup>
+
+```text Messaging
+chat:write
+```
+
+```text Channels
+channels:read
+channels:history
+groups:read
+groups:history
+```
+
+```text Users
+users:read
+users:read.email
+```
+
+```text Files
+files:read
+files:write
+```
+
+```text Reactions & Search
+reactions:read
+reactions:write
+search:read
+```
+
+```text Direct Messages
+im:read
+im:history
+im:write
+mpim:read
+mpim:history
+```
+
+</CodeGroup>
+
+<Warning>
+**Important**: Use **User Token Scopes**, not Bot Token Scopes. User scopes allow acting as the authenticated user.
+</Warning>
+
+</Step>
+
+<Step title="Get OAuth Credentials">
+
+1. Go to **Basic Information**
+2. Scroll to **App Credentials**
+3. Copy your **Client ID**
+4. Click **Show** next to **Client Secret** and copy it
+
+</Step>
+
+<Step title="Set Environment Variables">
+
+Add these to your `.env` file (in the project root):
+
+```bash .env
+SLACK_OAUTH_CLIENT_ID=your-slack-client-id
+SLACK_OAUTH_CLIENT_SECRET=your-slack-client-secret
+```
+
+<Note>
+These credentials are baked into the build at compile time using environment variables.
+</Note>
+
+</Step>
+
+<Step title="Rebuild Craft Agents">
+
+```bash
+bun install
+bun run electron:start
+```
+
+Your custom Slack OAuth credentials are now embedded in the build.
+
+</Step>
+
+</Steps>
+
+## OAuth Flow
+
+<Steps>
+
+<Step title="Initiate Authentication">
+
+Tell the agent:
+
+```
+Connect to Slack
+```
+
+The agent opens your browser to the Slack authorization page.
+
+</Step>
+
+<Step title="Authorize in Browser">
+
+1. Select your Slack workspace
+2. Review requested permissions
+3. Click **Allow**
+
+</Step>
+
+<Step title="Callback & Token Exchange">
+
+1. Slack redirects to `https://agents.craft.do/auth/slack/callback?port={port}`
+2. The relay forwards to `http://localhost:{port}/callback`
+3. Craft Agent exchanges the code for a user access token
+4. Token stored encrypted in `~/.craft-agent/credentials.enc`
+
+</Step>
+
+</Steps>
+
+## Scope Sets by Service
+
+Craft Agent provides predefined scope sets:
+
+<Accordion title="Messaging (service: 'messaging')">
+
+```typescript
+['chat:write']
+```
+
+Allows posting messages as the user.
+
+</Accordion>
+
+<Accordion title="Channels (service: 'channels')">
+
+```typescript
+[
+  'channels:read',
+  'channels:history',
+  'groups:read',
+  'groups:history'
+]
+```
+
+Read public and private channels, view message history.
+
+</Accordion>
+
+<Accordion title="Users (service: 'users')">
+
+```typescript
+['users:read', 'users:read.email']
+```
+
+View user profiles and email addresses.
+
+</Accordion>
+
+<Accordion title="Files (service: 'files')">
+
+```typescript
+['files:read', 'files:write']
+```
+
+Upload, download, and manage files.
+
+</Accordion>
+
+<Accordion title="Full Workspace (service: 'full')">
+
+```typescript
+[
+  'chat:write',
+  'channels:read',
+  'channels:history',
+  'groups:read',
+  'groups:history',
+  'users:read',
+  'users:read.email',
+  'files:read',
+  'files:write',
+  'reactions:read',
+  'reactions:write',
+  'im:read',
+  'im:history',
+  'im:write',
+  'mpim:read',
+  'mpim:history',
+  'search:read'
+]
+```
+
+Complete workspace access with all permissions.
+
+</Accordion>
+
+## Token Types
+
+<Warning>
+**User Token vs Bot Token**
+
+Craft Agent uses **user tokens** (`xoxp-...`), not bot tokens (`xoxb-...`).
+
+- **User tokens**: Act as the authenticated user, post as yourself
+- **Bot tokens**: Act as a bot user, separate identity
+
+User tokens are obtained via `user_scope` in OAuth (not `scope`).
+</Warning>
+
+## Token Refresh
+
+Slack supports **token rotation** if enabled in your app settings:
+
+1. Go to **OAuth & Permissions** in Slack App settings
+2. Enable **Token Rotation**
+3. Access tokens expire after configured duration
+4. Craft Agent automatically refreshes using the refresh token
+
+<Note>
+If token rotation is not enabled, your access token never expires (but can be manually revoked).
+</Note>
+
+## Security
+
+- **Encrypted storage**: Tokens stored in `~/.craft-agent/credentials.enc` (AES-256-GCM)
+- **HTTPS required**: OAuth callbacks use HTTPS via relay
+- **CSRF protection**: State parameter prevents cross-site attacks
+- **Scope minimization**: Only request scopes you need
+
+## Troubleshooting
+
+<Accordion title="Error: Slack OAuth not configured">
+
+Client ID or Client Secret is missing:
+
+1. Verify environment variables are set: `SLACK_OAUTH_CLIENT_ID` and `SLACK_OAUTH_CLIENT_SECRET`
+2. Rebuild Craft Agents after setting env vars
+3. Check `.env` file is in the project root
+
+</Accordion>
+
+<Accordion title="Error: OAuth state mismatch">
+
+CSRF protection triggered. Possible causes:
+
+1. Multiple OAuth flows running simultaneously
+2. Browser cache issues
+3. Proxy modifying requests
+
+Try clearing browser cache and re-authenticating.
+
+</Accordion>
+
+<Accordion title="Error: No user access token received">
+
+Your Slack app is requesting bot scopes instead of user scopes:
+
+1. Go to **OAuth & Permissions** in Slack App settings
+2. Verify scopes are under **User Token Scopes**, not Bot Token Scopes
+3. Remove any bot scopes
+4. Re-authenticate
+
+</Accordion>
+
+<Accordion title="Redirect URI mismatch">
+
+The redirect URI in your Slack app doesn't match:
+
+1. Go to **OAuth & Permissions** → **Redirect URLs**
+2. Ensure `https://agents.craft.do/auth/slack/callback` is listed
+3. Click **Save URLs**
+4. Try again
+
+</Accordion>
+
+<Accordion title="Token refresh fails">
+
+Token rotation might not be enabled:
+
+1. Check **OAuth & Permissions** → **Token Rotation**
+2. Enable if you want automatic token refresh
+3. Re-authenticate to get a refresh token
+
+If token rotation is disabled, your token never expires (no refresh needed).
+
+</Accordion>
+
+## Source Configuration
+
+Example `config.json` for a Slack source:
+
+```json
+{
+  "name": "Slack Workspace",
+  "type": "api",
+  "api": {
+    "slackService": "full",
+    "teamId": "T01234567",
+    "teamName": "My Workspace",
+    "userId": "U01234567"
+  }
+}
+```
+
+<Note>
+`teamId`, `teamName`, and `userId` are populated automatically during OAuth.
+</Note>
+
+## Example Usage
+
+Once connected, you can interact with Slack:
+
+```
+Post a message to #general: "Hello from Craft Agent!"
+```
+
+```
+Show me the last 10 messages in #engineering
+```
+
+```
+Upload analysis.pdf to #reports channel
+```
+
+```
+Search for messages containing "product launch" from last week
+```
+
+## Related Resources
+
+- [Slack API: Your Apps](https://api.slack.com/apps)
+- [Slack OAuth Documentation](https://api.slack.com/authentication/oauth-v2)
+- [Slack API Methods](https://api.slack.com/methods)
+- [Slack Scopes Reference](https://api.slack.com/scopes)

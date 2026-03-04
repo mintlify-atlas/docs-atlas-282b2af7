@@ -1,0 +1,257 @@
+---
+title: Google AI Studio
+description: Connect to Gemini models with native Google Search grounding
+icon: google
+---
+
+Craft Agents supports Google's Gemini models through the Google AI Studio API. This connection includes **native Google Search grounding** - allowing Gemini to answer questions using real-time web search results.
+
+## Why Google AI Studio?
+
+<CardGroup cols={2}>
+  <Card title="Native Search Grounding" icon="magnifying-glass">
+    Gemini can search the web and cite sources in its responses
+  </Card>
+  <Card title="Generous Free Tier" icon="gift">
+    15 requests/minute and 1,500 requests/day at no cost
+  </Card>
+  <Card title="Latest Gemini Models" icon="sparkles">
+    Access to Gemini 2.5 Pro, Flash, and Flash Lite
+  </Card>
+  <Card title="Multimodal Support" icon="image">
+    Native image, video, and audio understanding
+  </Card>
+</CardGroup>
+
+## Setup
+
+<Steps>
+  <Step title="Get your API key">
+    1. Go to [Google AI Studio](https://aistudio.google.com/apikey)
+    2. Click **Get API key** or **Create API key**
+    3. Select a Google Cloud project (or create a new one)
+    4. Copy your API key
+    
+    <Note>
+      The API key is free to generate and includes a generous free tier. No credit card required.
+    </Note>
+  </Step>
+
+  <Step title="Add connection in Craft Agents">
+    1. Open **Settings** → **AI Connections**
+    2. Click **Add Connection**
+    3. Select **Google AI Studio**
+    4. Paste your API key
+    5. Choose your default model (e.g., `gemini-2.5-pro`)
+    6. Click **Save**
+  </Step>
+
+  <Step title="Verify connection">
+    The connection will be automatically validated. You'll see a green checkmark when it's ready to use.
+  </Step>
+</Steps>
+
+## Available Models
+
+Craft Agents automatically detects Gemini models available on your API key:
+
+<CodeGroup>
+```typescript Gemini 2.5 Models
+'gemini-2.5-pro'        // Most capable, 2M token context
+'gemini-2.5-flash'      // Fast and efficient
+'gemini-2.5-flash-lite' // Ultra-fast for simple tasks
+```
+
+```typescript Legacy Models
+'gemini-2.0-flash'      // Previous generation
+'gemini-2.0-flash-lite'
+'gemini-1.5-pro'        // Older models (limited features)
+'gemini-1.5-flash'
+```
+</CodeGroup>
+
+<Note>
+  Legacy models (1.5-series and 2.0-flash) do not support Google Search grounding or all function calling features.
+</Note>
+
+Source: `packages/shared/src/config/models-pi.ts:45-55`
+
+## Native Google Search Grounding
+
+Gemini models have built-in access to Google Search. When you ask a question requiring current information, Gemini automatically searches the web and cites sources.
+
+### How It Works
+
+<Steps>
+  <Step title="Ask a question">
+    Simply ask the agent a question that requires real-time data:
+    
+    ```
+    "What's the latest news about Claude Opus 4.6?"
+    "What's the weather in Tokyo today?"
+    "Find documentation for the Stripe API"
+    ```
+  </Step>
+
+  <Step title="Agent uses web_search tool">
+    When connected to Google AI Studio, Craft Agents exposes a `web_search` tool that makes a separate Gemini API call with `{ googleSearch: {} }` grounding enabled.
+    
+    <Note>
+      The Gemini API doesn't allow combining Google Search grounding with function calling in the same request. So we expose it as an explicit tool instead.
+    </Note>
+  </Step>
+
+  <Step title="Get grounded results with citations">
+    The response includes:
+    - A natural language answer synthesized by Gemini
+    - Source citations with clickable links
+    - Grounding metadata (search queries, web chunks)
+  </Step>
+</Steps>
+
+### Implementation Details
+
+The Google Search tool is implemented in the Pi Agent Server:
+
+```typescript
+// packages/pi-agent-server/src/tools/google-search.ts
+
+const GROUNDING_MODEL = 'gemini-2.5-flash';
+const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+const response = await fetch(`${API_BASE}/${GROUNDING_MODEL}:generateContent`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'x-goog-api-key': apiKey,
+  },
+  body: JSON.stringify({
+    contents: [{ role: 'user', parts: [{ text: query }] }],
+    tools: [{ googleSearch: {} }], // Enable grounding
+  }),
+});
+
+// Extract grounded text and source citations
+const text = candidate.content.parts.map(p => p.text).join('');
+const sources = metadata.groundingChunks
+  .map((c, i) => `${i + 1}. [${c.web.title}](${c.web.uri})`)
+  .join('\n');
+```
+
+Source: `packages/pi-agent-server/src/tools/google-search.ts:20-106`
+
+<Warning>
+  Google Search grounding is **only available when the Pi auth provider is `google`**. It replaces the default DuckDuckGo `web_search` tool.
+</Warning>
+
+## Pricing
+
+Google AI Studio offers a generous free tier:
+
+| Model | Free Tier | Paid Pricing (Input/Output) |
+|-------|-----------|-----------------------------|
+| Gemini 2.5 Pro | 15 RPM / 1,500 RPD | $1.25 / $5.00 per 1M tokens |
+| Gemini 2.5 Flash | 15 RPM / 1,500 RPD | $0.30 / $1.20 per 1M tokens |
+| Gemini 2.5 Flash Lite | 15 RPM / 1,500 RPD | $0.15 / $0.60 per 1M tokens |
+
+<Note>
+  **RPM** = Requests per minute  
+  **RPD** = Requests per day
+  
+  Google Search grounding is included at no extra cost.
+</Note>
+
+For higher limits, upgrade to [Google Cloud AI](https://cloud.google.com/vertex-ai/pricing).
+
+## Multimodal Support
+
+Gemini models natively support images, videos, and audio. In Craft Agents:
+
+- **Images**: Drag and drop PNG, JPEG, WebP files
+- **Videos**: MP4, MOV (up to 10 minutes)
+- **Audio**: MP3, WAV, OGG
+- **Documents**: PDF (automatically converted to images)
+
+Gemini will analyze the content and respond accordingly.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="API key invalid">
+    **Error:** `Authentication failed. Check your API key or OAuth token.`
+    
+    **Solutions:**
+    - Verify you copied the full API key from Google AI Studio
+    - Ensure the API key is associated with an active Google Cloud project
+    - Check that the Google AI API is enabled in your project
+  </Accordion>
+
+  <Accordion title="Rate limits exceeded">
+    **Error:** `Rate limited or quota exceeded. Try again later.`
+    
+    **Free tier limits:**
+    - 15 requests per minute
+    - 1,500 requests per day
+    
+    Wait until the rate limit resets, or upgrade to a paid plan for higher limits.
+  </Accordion>
+
+  <Accordion title="Google Search not working">
+    **Problem:** The `web_search` tool isn't being used or returns generic results.
+    
+    **Check:**
+    - Ensure your connection's `piAuthProvider` is set to `google` (this should happen automatically)
+    - Verify you're using a Gemini 2.5 model (not 1.5 or 2.0)
+    - Try explicitly asking the agent to "search the web" or "look up current information"
+    
+    <Note>
+      The Google Search tool is only injected when the Pi auth provider is `google`. Other providers use DuckDuckGo instead.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Model not found">
+    **Error:** `Model not found. Check the connection configuration.`
+    
+    Some models may not be available in all regions:
+    - Check [Google AI Studio](https://aistudio.google.com/models) for model availability
+    - Try switching to `gemini-2.5-flash` (most widely available)
+  </Accordion>
+</AccordionGroup>
+
+## Example: Using Google Search
+
+Here's a sample conversation demonstrating native Google Search grounding:
+
+<CodeGroup>
+```bash User
+What's the latest release of Bun, and what are the key features?
+```
+
+```markdown Assistant (using web_search)
+🔍 Searching the web: "latest Bun release features"
+
+Bun 1.2.0 was released on March 1, 2026, with several major improvements:
+
+**Key Features:**
+- Native Windows support (no longer requires WSL)
+- 40% faster startup time for TypeScript projects
+- Built-in SQLite driver with zero dependencies
+- Improved Node.js compatibility (98% pass rate)
+
+**Sources:**
+1. [Bun 1.2.0 Release Notes](https://bun.sh/blog/bun-v1.2.0)
+2. [Bun Roadmap 2026](https://github.com/oven-sh/bun/issues/9001)
+3. [Hacker News: Bun 1.2.0](https://news.ycombinator.com/item?id=39847362)
+```
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Add More Providers" icon="layer-group" href="/integrations/llm/custom-endpoints">
+    Connect to OpenRouter, Ollama, or custom endpoints
+  </Card>
+  <Card title="Configure Workspaces" icon="folder-tree" href="/concepts/workspaces">
+    Set per-workspace default models
+  </Card>
+</CardGroup>

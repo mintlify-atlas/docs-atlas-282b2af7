@@ -1,0 +1,651 @@
+---
+title: 'Security Architecture'
+description: 'Credential encryption, OAuth flows, and security best practices'
+icon: 'shield-halved'
+---
+
+## Overview
+
+Craft Agents implements **defense-in-depth security** with multiple layers:
+
+- **AES-256-GCM encryption** for credentials at rest
+- **OAuth 2.0 + PKCE** for secure authentication flows
+- **MCP process isolation** preventing cross-server data access
+- **Environment variable filtering** to prevent secret leakage
+- **Permission modes** limiting agent capabilities
+
+<Note>
+  All sensitive data (API keys, OAuth tokens) is stored encrypted. The app never stores credentials in plaintext.
+</Note>
+
+## Credential Encryption
+
+Credentials are stored in an encrypted file using **AES-256-GCM** (Galois/Counter Mode) with authenticated encryption.
+
+### Storage Location
+
+```
+~/.craft-agent/credentials.enc
+```
+
+**File permissions:** `0600` (owner read/write only)
+
+### Encryption Scheme
+
+```typescript
+// From secure-storage.ts
+const ALGORITHM = 'aes-256-gcm';
+const KEY_SIZE = 32;        // 256 bits
+const IV_SIZE = 12;         // 96 bits (recommended for GCM)
+const AUTH_TAG_SIZE = 16;   // 128 bits
+const SALT_SIZE = 32;       // 256 bits
+const PBKDF2_ITERATIONS = 100000;
+```
+
+### File Format
+
+<Tabs>
+  <Tab title="Binary Structure">
+    ```
+    [Header - 64 bytes]
+    ├── Magic: "CRAFT01\0" (8 bytes)
+    ├── Flags: uint32 LE (4 bytes) - reserved
+    ├── Salt: 32 bytes (PBKDF2 salt)
+    └── Reserved: 20 bytes
+    
+    [Encrypted Payload - variable]
+    ├── IV: 12 bytes (random per write)
+    ├── Auth Tag: 16 bytes (GCM authentication)
+    └── Ciphertext: variable (encrypted JSON)
+    ```
+  </Tab>
+  
+  <Tab title="Decrypted Payload">
+    ```json
+    {
+      "version": 1,
+      "credentials": {
+        "llm:claude:default": {
+          "type": "api_key",
+          "apiKey": "sk-ant-...",
+          "createdAt": 1709539200000,
+          "updatedAt": 1709539200000
+        },
+        "source:linear:oauth": {
+          "type": "oauth",
+          "accessToken": "lin_...",
+          "refreshToken": "rt_...",
+          "expiresAt": 1709625600000,
+          "tokenType": "Bearer"
+        }
+      },
+      "metadata": {
+        "createdAt": 1709539200000,
+        "updatedAt": 1709539200000
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Key Derivation
+
+Encryption key is derived from **hardware UUID** using PBKDF2:
+
+```typescript
+// From secure-storage.ts
+function getStableMachineId(): string {
+  if (process.platform === 'darwin') {
+    // macOS: IOPlatformUUID (tied to logic board)
+    return execSync('ioreg -rd1 -c IOPlatformExpertDevice | grep IOPlatformUUID');
+  } else if (process.platform === 'win32') {
+    // Windows: MachineGuid from registry
+    return execSync('reg query HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography /v MachineGuid');
+  } else {
+    // Linux: dbus machine-id
+    return readFileSync('/var/lib/dbus/machine-id', 'utf-8').trim();
+  }
+  
+  // Fallback: username + homedir
+  return `${userInfo().username}:${homedir()}`;
+}
+
+function deriveKey(salt: Buffer): Buffer {
+  const machineId = getStableMachineId();
+  return pbkdf2Sync(
+    machineId,
+    salt,
+    PBKDF2_ITERATIONS,
+    KEY_SIZE,
+    'sha256'
+  );
+}
+```
+
+<Warning>
+  **Hardware UUID is stable across reboots** but unique per machine. Copying credentials.enc to another machine will fail decryption.
+</Warning>
+
+### Encryption Process
+
+```typescript
+// Simplified encryption flow
+function encryptCredentials(data: CredentialStore): Buffer {
+  // 1. Generate random salt and IV
+  const salt = randomBytes(SALT_SIZE);
+  const iv = randomBytes(IV_SIZE);
+  
+  // 2. Derive encryption key from machine ID
+  const key = deriveKey(salt);
+  
+  // 3. Serialize data to JSON
+  const plaintext = JSON.stringify(data);
+  
+  // 4. Encrypt with AES-256-GCM
+  const cipher = createCipheriv('aes-256-gcm', key, iv);
+  const ciphertext = Buffer.concat([
+    cipher.update(plaintext, 'utf-8'),
+    cipher.final()
+  ]);
+  const authTag = cipher.getAuthTag();
+  
+  // 5. Assemble file: Header + IV + AuthTag + Ciphertext
+  return Buffer.concat([
+    MAGIC_BYTES,
+    Buffer.alloc(4),  // flags
+    salt,
+    Buffer.alloc(20), // reserved
+    iv,
+    authTag,
+    ciphertext
+  ]);
+}
+```
+
+### Decryption Process
+
+```typescript
+function decryptCredentials(buffer: Buffer): CredentialStore {
+  // 1. Validate magic bytes
+  if (!buffer.subarray(0, 8).equals(MAGIC_BYTES)) {
+    throw new Error('Invalid credentials file format');
+  }
+  
+  // 2. Extract header components
+  const salt = buffer.subarray(12, 44);
+  const iv = buffer.subarray(64, 76);
+  const authTag = buffer.subarray(76, 92);
+  const ciphertext = buffer.subarray(92);
+  
+  // 3. Derive key from machine ID
+  const key = deriveKey(salt);
+  
+  // 4. Decrypt and verify
+  const decipher = createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  
+  const plaintext = Buffer.concat([
+    decipher.update(ciphertext),
+    decipher.final()  // Throws if auth tag invalid
+  ]);
+  
+  // 5. Parse JSON
+  return JSON.parse(plaintext.toString('utf-8'));
+}
+```
+
+<Note>
+  GCM mode provides **authenticated encryption** — tampering with the file will cause decryption to fail with an auth tag error.
+</Note>
+
+## OAuth 2.0 Flows
+
+Craft Agents uses **OAuth 2.0 with PKCE** (Proof Key for Code Exchange) for secure authentication without client secrets.
+
+### PKCE Flow
+
+<Steps>
+  <Step title="Generate code verifier">
+    ```typescript
+    // From oauth.ts
+    const verifier = randomBytes(32).toString('base64url');
+    // Example: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+    ```
+  </Step>
+  
+  <Step title="Compute code challenge">
+    ```typescript
+    const challenge = createHash('sha256')
+      .update(verifier)
+      .digest('base64url');
+    // Example: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+    ```
+  </Step>
+  
+  <Step title="Authorization request">
+    ```http
+    GET /oauth/authorize
+      ?client_id=craft-agent-xyz
+      &redirect_uri=http://localhost:8914/oauth/callback
+      &response_type=code
+      &code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM
+      &code_challenge_method=S256
+      &state=random-csrf-token
+    ```
+  </Step>
+  
+  <Step title="User authorizes in browser">
+    OAuth provider shows consent screen, user approves.
+  </Step>
+  
+  <Step title="Callback with authorization code">
+    ```http
+    GET http://localhost:8914/oauth/callback
+      ?code=AUTH_CODE_HERE
+      &state=random-csrf-token
+    ```
+  </Step>
+  
+  <Step title="Token exchange">
+    ```typescript
+    POST /oauth/token
+    Content-Type: application/x-www-form-urlencoded
+    
+    grant_type=authorization_code
+    &code=AUTH_CODE_HERE
+    &redirect_uri=http://localhost:8914/oauth/callback
+    &client_id=craft-agent-xyz
+    &code_verifier=dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+    ```
+    
+    Server verifies: `SHA256(code_verifier) == code_challenge`
+  </Step>
+  
+  <Step title="Store encrypted tokens">
+    ```typescript
+    const tokens = await response.json();
+    await credentialManager.set(
+      { type: 'source', provider: 'linear', account: 'oauth' },
+      {
+        type: 'oauth',
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: Date.now() + tokens.expires_in * 1000
+      }
+    );
+    ```
+  </Step>
+</Steps>
+
+### Security Properties
+
+<CardGroup cols={2}>
+  <Card title="No Client Secret" icon="key">
+    PKCE eliminates the need for a client secret, safe for public clients.
+  </Card>
+  
+  <Card title="CSRF Protection" icon="shield">
+    Random `state` parameter prevents cross-site request forgery.
+  </Card>
+  
+  <Card title="Authorization Code Binding" icon="link">
+    `code_verifier` proves the client that started the flow is the one completing it.
+  </Card>
+  
+  <Card title="Limited Scope" icon="list">
+    OAuth scopes restrict what the app can access (e.g., read-only vs full access).
+  </Card>
+</CardGroup>
+
+### Token Refresh
+
+```typescript
+// From oauth.ts
+async function refreshAccessToken(
+  tokenEndpoint: string,
+  clientId: string,
+  refreshToken: string
+): Promise<OAuthTokens> {
+  const response = await fetch(tokenEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: clientId
+    })
+  });
+  
+  if (!response.ok) {
+    throw new Error('Token refresh failed');
+  }
+  
+  const data = await response.json();
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token || refreshToken,
+    expiresAt: Date.now() + data.expires_in * 1000,
+    tokenType: data.token_type
+  };
+}
+```
+
+<Note>
+  Refresh tokens are **long-lived** (typically 90 days). Access tokens expire quickly (1-24 hours) and are refreshed automatically.
+</Note>
+
+## MCP Isolation
+
+MCP (Model Context Protocol) servers run in **separate processes** with strict isolation:
+
+### Process Architecture
+
+```
+┌─────────────────────────────────────────┐
+│ Main Process (Electron)                  │
+│                                          │
+│  ┌──────────────────┐                   │
+│  │ McpClientPool    │                   │
+│  │ - Manages all    │                   │
+│  │   source conns   │                   │
+│  └──────┬───────────┘                   │
+│         │                                │
+└─────────┼────────────────────────────────┘
+          │
+          │ spawns subprocesses
+          │
+          ├────────────────────┐
+          │                    │
+          ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐
+│ MCP Server 1    │  │ MCP Server 2    │
+│ (Linear)        │  │ (GitHub)        │
+│                 │  │                 │
+│ - Own memory    │  │ - Own memory    │
+│ - Own env vars  │  │ - Own env vars  │
+│ - No cross-talk │  │ - No cross-talk │
+└─────────────────┘  └─────────────────┘
+```
+
+### Isolation Guarantees
+
+<ParamField path="Memory Isolation" type="security">
+  Each MCP server has its own memory space. One server cannot read data from another.
+</ParamField>
+
+<ParamField path="Credential Scoping" type="security">
+  Credentials are passed only to the server that needs them, never shared between servers.
+</ParamField>
+
+<ParamField path="Tool Namespacing" type="security">
+  Tools are prefixed with `mcp__<slug>__` preventing name collisions and enabling source-specific permissions.
+</ParamField>
+
+<ParamField path="Crash Isolation" type="security">
+  If one MCP server crashes, others continue running. The main app is unaffected.
+</ParamField>
+
+### Bridge MCP Server
+
+For API sources (Linear, GitHub, etc.), the Bridge MCP Server acts as a secure proxy:
+
+```typescript
+// Bridge reads credentials from cache file
+const credentialPath = join(
+  getSourcePath(workspaceRootPath, sourceSlug),
+  '.credential-cache.json'
+);
+
+function readCredential(): StoredCredential | null {
+  if (!existsSync(credentialPath)) return null;
+  
+  const data = readFileSync(credentialPath, 'utf-8');
+  const cred = JSON.parse(data);
+  
+  // Check expiry
+  if (cred.expiresAt && cred.expiresAt < Date.now()) {
+    return null; // Expired
+  }
+  
+  return cred;
+}
+```
+
+**Credential cache security:**
+
+- **File permissions:** `0600` (owner read/write only)
+- **Passive refresh:** Bridge reads on each request, no active polling
+- **Automatic expiry:** Expired tokens cause auth errors, prompting re-auth
+- **Per-source isolation:** Each source has its own cache file
+
+<Warning>
+  If an OAuth token expires mid-session, API requests will fail with auth errors. Users must re-authenticate to refresh the token.
+</Warning>
+
+## Environment Variable Filtering
+
+The agent **filters environment variables** to prevent accidental secret leakage:
+
+```typescript
+// Sensitive patterns blocked from agent context
+const BLOCKED_ENV_PATTERNS = [
+  /^API_KEY$/i,
+  /^SECRET$/i,
+  /^PASSWORD$/i,
+  /^TOKEN$/i,
+  /^AWS_/i,
+  /^OPENAI_/i,
+  /^ANTHROPIC_/i
+];
+
+function filterEnvironment(env: Record<string, string>): Record<string, string> {
+  const filtered: Record<string, string> = {};
+  
+  for (const [key, value] of Object.entries(env)) {
+    if (BLOCKED_ENV_PATTERNS.some(pattern => pattern.test(key))) {
+      continue; // Skip sensitive vars
+    }
+    filtered[key] = value;
+  }
+  
+  return filtered;
+}
+```
+
+<Note>
+  Environment filtering applies to agent context only. MCP servers and bash commands still have access to the full environment.
+</Note>
+
+## Secure Credential Access
+
+### Credential Manager API
+
+```typescript
+import { getCredentialManager } from '@craft-agent/shared/credentials';
+
+const manager = getCredentialManager();
+
+// Get credential (auto-decrypts)
+const cred = await manager.get({
+  type: 'llm',
+  provider: 'claude',
+  account: 'default'
+});
+
+// Set credential (auto-encrypts)
+await manager.set(
+  { type: 'source', provider: 'linear', account: 'oauth' },
+  {
+    type: 'oauth',
+    accessToken: 'lin_...',
+    refreshToken: 'rt_...',
+    expiresAt: Date.now() + 3600000
+  }
+);
+
+// Delete credential
+await manager.delete({
+  type: 'source',
+  provider: 'linear',
+  account: 'oauth'
+});
+```
+
+### Credential Types
+
+```typescript
+type CredentialId = {
+  type: 'llm' | 'source' | 'mcp';
+  provider: string;
+  account: string;
+};
+
+type StoredCredential = 
+  | { type: 'api_key'; apiKey: string; }
+  | { type: 'oauth'; accessToken: string; refreshToken?: string; expiresAt?: number; tokenType: string; }
+  | { type: 'basic'; username: string; password: string; }
+  | { type: 'bearer'; token: string; };
+```
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Never Commit Secrets" icon="ban">
+    Keep `.env` files and `credentials.enc` out of version control.
+    ```gitignore
+    .env
+    .env.*
+    credentials.enc
+    .credential-cache.json
+    ```
+  </Card>
+  
+  <Card title="Use Environment Variables" icon="terminal">
+    For local development, store secrets in `.env` files, never hardcode.
+    ```bash
+    ANTHROPIC_API_KEY=sk-ant-...
+    LINEAR_API_KEY=lin_...
+    ```
+  </Card>
+  
+  <Card title="Review Execute Mode Usage" icon="eye">
+    Only use Execute mode when you fully trust the agent's plan. Default to Ask mode.
+  </Card>
+  
+  <Card title="Audit Permissions Regularly" icon="clipboard-check">
+    Periodically review `permissions.json` to ensure rules match your security requirements.
+  </Card>
+  
+  <Card title="Rotate Credentials" icon="arrows-rotate">
+    Regularly rotate API keys and OAuth tokens, especially after team member departures.
+  </Card>
+  
+  <Card title="Monitor MCP Server Logs" icon="list">
+    Check logs for unusual activity or failed auth attempts.
+    ```bash
+    tail -f ~/.craft-agent/logs/mcp-*.log
+    ```
+  </Card>
+</CardGroup>
+
+## Threat Model
+
+### Protected Against
+
+<AccordionGroup>
+  <Accordion title="Credential Theft from Disk">
+    **Threat:** Attacker gains read access to filesystem
+    
+    **Mitigation:** AES-256-GCM encryption with hardware-derived key. Even with file access, attacker needs machine UUID to decrypt.
+  </Accordion>
+  
+  <Accordion title="Authorization Code Interception">
+    **Threat:** Attacker intercepts OAuth authorization code
+    
+    **Mitigation:** PKCE binds authorization code to the client that initiated the flow via `code_verifier`.
+  </Accordion>
+  
+  <Accordion title="Cross-Site Request Forgery (CSRF)">
+    **Threat:** Attacker tricks user into authorizing malicious OAuth request
+    
+    **Mitigation:** Random `state` parameter validated on callback.
+  </Accordion>
+  
+  <Accordion title="MCP Server Cross-Contamination">
+    **Threat:** One compromised MCP server accesses data from another
+    
+    **Mitigation:** Process isolation — each server runs in separate memory space with own credentials.
+  </Accordion>
+  
+  <Accordion title="Environment Variable Leakage">
+    **Threat:** Agent accidentally includes secrets in prompts or logs
+    
+    **Mitigation:** Environment filtering blocks sensitive variables from agent context.
+  </Accordion>
+</AccordionGroup>
+
+### Out of Scope
+
+<Warning>
+  The following threats are **not protected against** and require defense at the OS level:
+  
+  - **Memory dumping:** Attacker with root/admin can read process memory
+  - **Keylogging:** Attacker captures typed credentials before encryption
+  - **Physical access:** Attacker with physical machine access can extract keys
+  - **Compromised OS:** Malware with elevated privileges bypasses all protections
+</Warning>
+
+## Compliance
+
+### Data Residency
+
+- **Credentials:** Stored locally at `~/.craft-agent/credentials.enc`
+- **Sessions:** Stored locally at `~/.craft-agent/sessions/`
+- **No cloud sync:** All sensitive data remains on your machine
+
+### GDPR Considerations
+
+If you're subject to GDPR:
+
+- **Right to erasure:** Delete workspace directories to remove all data
+- **Data portability:** Export workspace as JSON for portability
+- **Minimal data collection:** Only store what's needed for functionality
+
+## Reporting Vulnerabilities
+
+Found a security issue? **Please report responsibly:**
+
+<Steps>
+  <Step title="Email security team">
+    Send details to **security@craft.do** (do NOT use public GitHub issues)
+  </Step>
+  
+  <Step title="Include details">
+    - Description of vulnerability
+    - Steps to reproduce
+    - Potential impact
+    - Suggested fix (optional)
+  </Step>
+  
+  <Step title="Wait for response">
+    - Acknowledgment within 48 hours
+    - Initial assessment within 7 days
+    - Resolution within 30 days for critical issues
+  </Step>
+</Steps>
+
+<Note>
+  We appreciate responsible disclosure and will acknowledge researchers (with permission) who report valid vulnerabilities.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Permission Modes" icon="shield" href="/features/permissions/modes">
+    Learn about Explore, Ask, and Execute modes
+  </Card>
+  
+  <Card title="Configuration" icon="gear" href="/features/permissions/configuration">
+    Customize safety rules with permissions.json
+  </Card>
+</CardGroup>

@@ -1,0 +1,197 @@
+---
+title: Skills Overview
+description: Learn what skills are and how they extend agent capabilities
+icon: sparkles
+---
+
+## What Are Skills?
+
+Skills are specialized instructions that extend Claude's capabilities for specific tasks. They provide focused guidance that helps the agent perform domain-specific work more effectively.
+
+<Note>
+Skills use **the exact same SKILL.md format as the Claude Code SDK** - making skills fully compatible between systems.
+</Note>
+
+### Key Features
+
+<CardGroup cols={2}>
+  <Card title="Slash Commands" icon="terminal">
+    Invoke skills instantly with commands like `/commit` or `/review-pr`
+  </Card>
+  <Card title="Auto-Triggering" icon="wand-magic-sparkles">
+    Skills activate automatically based on file patterns (globs)
+  </Card>
+  <Card title="Tool Permissions" icon="shield-check">
+    Pre-approve specific tools to run without prompting
+  </Card>
+  <Card title="SDK Compatible" icon="code">
+    Same format as Claude Code SDK for seamless portability
+  </Card>
+</CardGroup>
+
+## How Skills Work
+
+When you invoke a skill, it injects specialized instructions into Claude's context. This helps the agent:
+
+- Follow project-specific conventions
+- Enforce team coding standards
+- Apply consistent patterns across tasks
+- Access domain-specific knowledge
+
+### Skill Structure
+
+Each skill is stored as a directory containing:
+
+```
+~/.craft-agent/workspaces/{workspaceId}/skills/{slug}/
+├── SKILL.md          # Required: Skill definition
+├── icon.svg          # Recommended: Visual identifier
+└── (other files)     # Optional: Additional resources
+```
+
+## Storage Hierarchy
+
+Skills follow a three-tier precedence system:
+
+<Steps>
+  <Step title="Project Skills (Highest Priority)">
+    Located in `{project}/.agents/skills/` - specific to the current codebase
+  </Step>
+  <Step title="Workspace Skills (Medium Priority)">
+    Located in `~/.craft-agent/workspaces/{id}/skills/` - scoped to workspace
+  </Step>
+  <Step title="Global Skills (Lowest Priority)">
+    Located in `~/.agents/skills/` - available across all workspaces
+  </Step>
+</Steps>
+
+<Tip>
+When multiple skills share the same slug, the higher-priority version takes precedence. This lets you override built-in skills with custom implementations.
+</Tip>
+
+## Invoking Skills
+
+### Via Slash Commands
+
+Type a forward slash followed by the skill name:
+
+```
+/commit
+/review-pr
+/test
+```
+
+### Via @Mentions
+
+Reference a skill directly in your message:
+
+```
+@commit Create a commit with these changes
+@review-pr Check this pull request for issues
+```
+
+### Via File Patterns
+
+Skills with `globs` patterns activate automatically when working with matching files:
+
+```yaml
+---
+name: "Test Helper"
+globs: ["*.test.ts", "**/__tests__/**"]
+---
+```
+
+## Skill Metadata
+
+Every skill requires frontmatter with key information:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Display name shown in UI |
+| `description` | Yes | Brief explanation of purpose |
+| `globs` | No | File patterns that trigger the skill |
+| `alwaysAllow` | No | Tools to auto-approve |
+| `requiredSources` | No | Sources to enable on invocation |
+
+### Example Metadata
+
+```yaml
+---
+name: "Commit Helper"
+description: "Create well-formatted git commit messages"
+globs: ["*.ts", "*.tsx"]
+alwaysAllow: ["Bash"]
+requiredSources:
+  - github
+---
+```
+
+## Required Sources
+
+The `requiredSources` field automatically enables specific sources when the skill is invoked:
+
+```yaml
+---
+name: "Linear Triage"
+requiredSources:
+  - linear
+---
+```
+
+When a user mentions this skill, the Linear source activates automatically - no manual toggle needed.
+
+<Note>
+Sources must exist in the workspace and be authenticated. Unauthenticated or missing sources are silently skipped.
+</Note>
+
+## Overriding Built-in Skills
+
+You can customize any built-in SDK skill by creating a workspace or project skill with the same slug:
+
+<Steps>
+  <Step title="Create Directory">
+    Make a folder matching the built-in skill's slug
+    ```bash
+    mkdir -p ~/.craft-agent/workspaces/{ws}/skills/commit
+    ```
+  </Step>
+  <Step title="Write SKILL.md">
+    Define your custom instructions with the same frontmatter format
+  </Step>
+  <Step title="Add Icon">
+    Include a visual identifier for the UI
+  </Step>
+</Steps>
+
+Your custom skill will be used instead of the SDK version.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Be Specific and Actionable">
+    Provide clear, concrete instructions that Claude can follow immediately. Avoid vague guidance.
+  </Accordion>
+  <Accordion title="Include Examples">
+    Show the expected output format or behavior with real examples.
+  </Accordion>
+  <Accordion title="Set Clear Boundaries">
+    Explicitly state what the skill should NOT do to prevent scope creep.
+  </Accordion>
+  <Accordion title="Keep Skills Focused">
+    One skill should handle one specific task or domain. Split complex workflows into multiple skills.
+  </Accordion>
+  <Accordion title="Add Visual Icons">
+    Use relevant icons to make skills easily identifiable in the UI.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Creating Skills" icon="pencil" href="/features/skills/creating-skills">
+    Learn how to build custom skills from scratch
+  </Card>
+  <Card title="Importing Skills" icon="download" href="./importing">
+    Import existing skills from Claude Code
+  </Card>
+</CardGroup>

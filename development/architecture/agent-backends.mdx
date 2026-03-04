@@ -1,0 +1,579 @@
+---
+title: Agent Backends
+description: Claude Agent SDK vs Pi SDK architecture, provider routing, and McpClientPool
+---
+
+## Backend Abstraction
+
+Craft Agents supports **multiple AI providers** through a unified backend interface. This allows seamless switching between Claude, Google AI Studio, ChatGPT Plus, and more.
+
+<CardGroup cols={2}>
+  <Card title="Claude Backend" icon="robot">
+    Powered by Claude Agent SDK
+  </Card>
+  <Card title="Pi Backend" icon="pi">
+    Powered by Pi SDK (subprocess)
+  </Card>
+</CardGroup>
+
+## AgentBackend Interface
+
+Both backends implement the `AgentBackend` interface for consistency:
+
+```typescript
+// packages/shared/src/agent/backend/types.ts
+export interface AgentBackend {
+  // Initialize agent with MCP servers and config
+  initialize(options: InitOptions): Promise<void>;
+  
+  // Stream chat responses
+  chat(prompt: string, options?: ChatOptions): AsyncGenerator<AgentEvent>;
+  
+  // Abort current operation
+  abort(): Promise<void>;
+  
+  // Cleanup resources
+  cleanup(): Promise<void>;
+  
+  // Set source servers (MCP + API)
+  setSourceServers(servers: SourceServer[]): Promise<void>;
+  
+  // Update permission mode
+  setPermissionMode(mode: PermissionMode): void;
+}
+```
+
+<Note>
+  The `AgentBackend` interface provides **provider-agnostic** agent operations. The Electron app doesn't need to know whether it's talking to Claude or Pi.
+</Note>
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Electron Main Process                                        │
+│                                                              │
+│  ┌────────────────────────────────────────────────────┐   │
+│  │ Backend Factory (createBackend)                     │   │
+│  │ - Detects provider from LLM connection             │   │
+│  │ - Routes to Claude or Pi backend                   │   │
+│  └────────────────────────────────────────────────────┘   │
+│                    │                                         │
+│       ┌────────────┴────────────┐                          │
+│       ▼                          ▼                          │
+│  ┌─────────────┐          ┌─────────────┐                 │
+│  │ ClaudeAgent │          │ PiAgent     │                 │
+│  │ (in-process)│          │ (subprocess)│                 │
+│  └─────────────┘          └─────────────┘                 │
+│       │                          │                          │
+│       │                          │                          │
+│       ▼                          ▼                          │
+│  McpClientPool                                              │
+│  (shared by both backends)                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Provider Routing
+
+### Supported Providers
+
+| Backend | Providers | Auth Types |
+|---------|-----------|------------|
+| **Claude** | Anthropic, OpenRouter, Vercel AI Gateway, Ollama, Custom | API key, OAuth (Claude Max/Pro) |
+| **Pi** | Google AI Studio, ChatGPT Plus (Codex), GitHub Copilot, OpenAI | API key, OAuth (device code) |
+
+### Provider Detection
+
+```typescript
+// packages/shared/src/agent/backend/factory.ts
+export function resolveSessionConnection(
+  connectionId: string,
+  workspaceId: string
+): { provider: AgentProvider; authType: LlmAuthType } {
+  const connection = getLlmConnection(connectionId);
+  
+  // Map connection type to provider
+  switch (connection.type) {
+    case 'anthropic':
+      return { provider: 'claude', authType: 'api_key' };
+    
+    case 'anthropic_oauth':
+      return { provider: 'claude', authType: 'oauth' };
+    
+    case 'google_ai_studio':
+      return { provider: 'pi', authType: 'api_key' };
+    
+    case 'codex_oauth':
+      return { provider: 'pi', authType: 'oauth' };
+    
+    case 'github_copilot':
+      return { provider: 'pi', authType: 'oauth' };
+    
+    default:
+      throw new Error(`Unknown connection type: ${connection.type}`);
+  }
+}
+```
+
+<Accordion title="Why route Google AI Studio through Pi?">
+  The Claude Agent SDK only supports Anthropic-compatible endpoints. Google AI Studio uses a different API format, so we route it through the Pi SDK which has native Google support.
+</Accordion>
+
+## Claude Backend
+
+The **Claude backend** runs **in-process** and wraps the Claude Agent SDK.
+
+### Implementation
+
+```typescript
+// packages/shared/src/agent/claude-agent.ts
+import { ClaudeAgentSDK } from '@anthropic-ai/claude-agent-sdk';
+
+export class ClaudeAgent implements AgentBackend {
+  private sdk: ClaudeAgentSDK;
+  private pool: McpClientPool;
+  
+  async initialize(options: InitOptions): Promise<void> {
+    // 1. Create proxy servers for MCP pool
+    const mcpServers = createSourceProxyServers(this.pool);
+    
+    // 2. Initialize SDK
+    this.sdk = new ClaudeAgentSDK({
+      apiKey: options.apiKey,
+      baseURL: options.baseURL,
+      model: options.model,
+      mcpServers,
+    });
+    
+    // 3. Register hooks
+    this.sdk.onPreToolUse(async (tool, args) => {
+      return await this.handlePreToolUse(tool, args);
+    });
+    
+    this.sdk.onPostToolUse(async (tool, result) => {
+      return await this.handlePostToolUse(tool, result);
+    });
+  }
+  
+  async *chat(prompt: string): AsyncGenerator<AgentEvent> {
+    for await (const event of this.sdk.chat(prompt)) {
+      yield this.transformEvent(event);
+    }
+  }
+  
+  private async handlePreToolUse(tool: string, args: any) {
+    // Permission mode validation
+    const mode = getPermissionMode(this.sessionId);
+    
+    if (mode === 'safe' && isWriteTool(tool)) {
+      throw new Error('Write operations blocked in safe mode');
+    }
+    
+    if (mode === 'ask' && isBashTool(tool)) {
+      const approved = await this.callbacks.onPermissionRequest(tool, args);
+      if (!approved) {
+        throw new Error('User denied permission');
+      }
+    }
+  }
+}
+```
+
+### Claude SDK Features
+
+<CardGroup cols={2}>
+  <Card title="Native MCP Support" icon="plug">
+    Built-in MCP server connections
+  </Card>
+  <Card title="Custom Base URLs" icon="link">
+    OpenRouter, Vercel AI Gateway, Ollama
+  </Card>
+  <Card title="Tool Hooks" icon="webhook">
+    PreToolUse and PostToolUse callbacks
+  </Card>
+  <Card title="Streaming" icon="water">
+    Async generator for real-time responses
+  </Card>
+</CardGroup>
+
+### Providers Using Claude Backend
+
+- **Anthropic** (API key or Claude Max/Pro OAuth)
+- **OpenRouter** (access 100+ models via `https://openrouter.ai/api`)
+- **Vercel AI Gateway** (observability and caching)
+- **Ollama** (local models via `http://localhost:11434`)
+- **Custom endpoints** (any Anthropic-compatible API)
+
+## Pi Backend
+
+The **Pi backend** runs as a **subprocess** and communicates via **JSONL over stdio**.
+
+### Why Subprocess?
+
+The Pi SDK has native dependencies (e.g., `koffi` for FFI) that don't bundle well with Electron. Running it as a subprocess isolates these dependencies.
+
+### Implementation
+
+```typescript
+// packages/shared/src/agent/pi-agent.ts
+import { spawn } from 'child_process';
+
+export class PiAgent implements AgentBackend {
+  private subprocess: ChildProcess;
+  private pool: McpClientPool;
+  
+  async initialize(options: InitOptions): Promise<void> {
+    // 1. Spawn subprocess
+    this.subprocess = spawn('bun', [
+      'run',
+      'pi-agent-server',
+      '--model', options.model,
+      '--api-key', options.apiKey,
+    ]);
+    
+    // 2. Set up stdio communication
+    this.subprocess.stdout.on('data', (data) => {
+      const lines = data.toString().split('\n');
+      for (const line of lines) {
+        if (line.trim()) {
+          this.handleSubprocessEvent(JSON.parse(line));
+        }
+      }
+    });
+    
+    // 3. Register pool tools with subprocess
+    await this.registerPoolToolsWithSubprocess();
+  }
+  
+  async *chat(prompt: string): AsyncGenerator<AgentEvent> {
+    // Send request to subprocess
+    this.subprocess.stdin.write(JSON.stringify({
+      type: 'chat',
+      prompt,
+    }) + '\n');
+    
+    // Stream events from subprocess
+    for await (const event of this.eventQueue) {
+      yield event;
+    }
+  }
+  
+  private async registerPoolToolsWithSubprocess() {
+    // Get tool definitions from pool
+    const tools = await this.pool.getToolDefinitions();
+    
+    // Send to subprocess
+    this.subprocess.stdin.write(JSON.stringify({
+      type: 'register_tools',
+      tools,
+    }) + '\n');
+  }
+}
+```
+
+### Pi Agent Server
+
+```typescript
+// packages/pi-agent-server/src/index.ts
+import { PiCodingAgent } from '@mariozechner/pi-coding-agent';
+
+const agent = new PiCodingAgent({
+  provider: process.env.PROVIDER,
+  apiKey: process.env.API_KEY,
+});
+
+// Read JSONL from stdin
+process.stdin.on('data', async (data) => {
+  const lines = data.toString().split('\n');
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    
+    const message = JSON.parse(line);
+    
+    if (message.type === 'chat') {
+      for await (const event of agent.chat(message.prompt)) {
+        // Write JSONL to stdout
+        process.stdout.write(JSON.stringify(event) + '\n');
+      }
+    }
+  }
+});
+```
+
+### Providers Using Pi Backend
+
+- **Google AI Studio** (Gemini models with native Google Search)
+- **ChatGPT Plus / Pro** (Codex OAuth)
+- **GitHub Copilot** (OAuth device code)
+- **OpenAI** (API key)
+
+<Note>
+  The Pi backend handles **OAuth flows** that the Claude SDK doesn't support (e.g., device code flow for GitHub Copilot).
+</Note>
+
+## McpClientPool
+
+The **McpClientPool** is a centralized connection manager shared by both backends.
+
+### Purpose
+
+Manage all source connections (MCP servers and API sources) in a single place:
+
+- Connect/disconnect sources dynamically
+- Route tool calls to the correct source
+- Handle credential refresh for API sources
+- Provide tool definitions to backends
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ McpClientPool (main process)                                 │
+│                                                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │ MCP Source   │  │ MCP Source   │  │ API Source   │     │
+│  │ (stdio)      │  │ (SSE)        │  │ (in-process) │     │
+│  │              │  │              │  │              │     │
+│  │ Linear       │  │ Remote MCP   │  │ Gmail        │     │
+│  │ GitHub       │  │ Server       │  │ Slack        │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+                │
+                │ Tool calls routed by slug
+                ▼
+          ┌──────────┐
+          │ ClaudeAgent / PiAgent │
+          └──────────┘
+```
+
+### Implementation
+
+```typescript
+// packages/shared/src/mcp/mcp-pool.ts
+export class McpClientPool {
+  private mcpClients = new Map<string, CraftMcpClient>();
+  private apiClients = new Map<string, ApiSourcePoolClient>();
+  
+  // Sync MCP sources (stdio/SSE)
+  async sync(servers: McpServerConfig[]): Promise<void> {
+    const slugs = new Set(servers.map(s => s.slug));
+    
+    // Disconnect removed sources
+    for (const [slug, client] of this.mcpClients) {
+      if (!slugs.has(slug)) {
+        await client.close();
+        this.mcpClients.delete(slug);
+      }
+    }
+    
+    // Connect new sources
+    for (const server of servers) {
+      if (!this.mcpClients.has(server.slug)) {
+        const client = new CraftMcpClient(server);
+        await client.connect();
+        this.mcpClients.set(server.slug, client);
+      }
+    }
+  }
+  
+  // Sync API sources (REST APIs)
+  async syncApiServers(servers: ApiServerConfig[]): Promise<void> {
+    const slugs = new Set(servers.map(s => s.slug));
+    
+    // Disconnect removed sources
+    for (const [slug, client] of this.apiClients) {
+      if (!slugs.has(slug)) {
+        await client.close();
+        this.apiClients.delete(slug);
+      }
+    }
+    
+    // Connect new sources
+    for (const server of servers) {
+      if (!this.apiClients.has(server.slug)) {
+        const client = new ApiSourcePoolClient(server);
+        await client.connect();
+        this.apiClients.set(server.slug, client);
+      }
+    }
+  }
+  
+  // Call tool on any source
+  async callTool(slug: string, toolName: string, args: object): Promise<any> {
+    const mcpClient = this.mcpClients.get(slug);
+    if (mcpClient) {
+      return await mcpClient.callTool(toolName, args);
+    }
+    
+    const apiClient = this.apiClients.get(slug);
+    if (apiClient) {
+      return await apiClient.callTool(toolName, args);
+    }
+    
+    throw new Error(`Source not found: ${slug}`);
+  }
+  
+  // Get all tool definitions
+  async getToolDefinitions(): Promise<ToolDefinition[]> {
+    const tools: ToolDefinition[] = [];
+    
+    for (const client of this.mcpClients.values()) {
+      tools.push(...await client.listTools());
+    }
+    
+    for (const client of this.apiClients.values()) {
+      tools.push(...await client.listTools());
+    }
+    
+    return tools;
+  }
+}
+```
+
+### Source Proxy Servers
+
+For the Claude backend, we create **proxy servers** that forward tool calls to the pool:
+
+```typescript
+// packages/shared/src/mcp/pool-server.ts
+export function createSourceProxyServers(pool: McpClientPool): McpServerConfig[] {
+  return pool.getAllSources().map(slug => ({
+    slug,
+    transport: {
+      type: 'proxy',
+      callTool: (name, args) => pool.callTool(slug, name, args),
+      listTools: () => pool.getToolsForSource(slug),
+    },
+  }));
+}
+```
+
+For the Pi backend, we send tool definitions to the subprocess:
+
+```typescript
+// packages/shared/src/agent/pi-agent.ts
+async registerPoolToolsWithSubprocess() {
+  const tools = await this.pool.getToolDefinitions();
+  
+  this.subprocess.stdin.write(JSON.stringify({
+    type: 'register_tools',
+    tools: tools.map(t => ({
+      name: `${t.source}__${t.name}`,
+      description: t.description,
+      inputSchema: t.inputSchema,
+      handler: 'pool', // Subprocess routes back to main process
+    })),
+  }) + '\n');
+}
+```
+
+<Accordion title="Why proxy servers?">
+  The Claude SDK expects MCP servers as config. We create "virtual" MCP servers that proxy calls to the centralized pool. This allows both backends to share the same source connections without duplicating clients.
+</Accordion>
+
+## Permission Hooks
+
+Both backends integrate with the **permission mode system** via hooks:
+
+### PreToolUse Hook
+
+```typescript
+// Validate permissions before tool execution
+async function handlePreToolUse(tool: string, args: any): Promise<void> {
+  const mode = getPermissionMode(sessionId);
+  
+  // Safe mode: block write operations
+  if (mode === 'safe' && isWriteTool(tool)) {
+    throw new Error('Write operations blocked in safe mode');
+  }
+  
+  // Ask mode: prompt for bash commands
+  if (mode === 'ask' && tool === 'bash') {
+    const approved = await callbacks.onPermissionRequest({
+      tool: 'bash',
+      command: args.command,
+    });
+    
+    if (!approved) {
+      throw new Error('User denied permission');
+    }
+  }
+}
+```
+
+### PostToolUse Hook
+
+```typescript
+// Summarize large tool results
+async function handlePostToolUse(tool: string, result: any): Promise<any> {
+  const resultSize = JSON.stringify(result).length;
+  
+  // If result > 60KB, summarize with Haiku
+  if (resultSize > 60_000) {
+    const summary = await summarizeWithHaiku(result, tool);
+    return summary;
+  }
+  
+  return result;
+}
+```
+
+<Note>
+  Large result summarization prevents token limit errors and reduces costs. The agent gets a focused summary instead of 100KB of JSON.
+</Note>
+
+## Factory Pattern
+
+The backend factory abstracts provider selection:
+
+```typescript
+// packages/shared/src/agent/backend/factory.ts
+export async function createBackend(
+  config: BackendConfig
+): Promise<AgentBackend> {
+  const provider = detectProvider(config.connectionId);
+  
+  if (provider === 'claude') {
+    return new ClaudeAgent(config);
+  }
+  
+  if (provider === 'pi') {
+    return new PiAgent(config);
+  }
+  
+  throw new Error(`Unknown provider: ${provider}`);
+}
+```
+
+### Usage in Electron App
+
+```typescript
+// apps/electron/src/main/sessions.ts
+import { createBackend } from '@craft-agent/shared/agent/backend';
+
+const backend = await createBackend({
+  connectionId: llmConnectionId,
+  workspaceId,
+  model: 'claude-sonnet-4-6',
+});
+
+await backend.initialize({
+  mcpServers: sources,
+  permissionMode: 'ask',
+});
+
+for await (const event of backend.chat('Hello')) {
+  console.log(event);
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="shapes" href="./overview">
+    Return to architecture overview
+  </Card>
+  <Card title="Packages" icon="box" href="./packages">
+    Explore @craft-agent/shared exports
+  </Card>
+</CardGroup>

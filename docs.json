@@ -1,122 +1,162 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Craft Agents",
+  "theme": "palm",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#8B5CF6",
+    "light": "#A78BFA",
+    "dark": "#7C3AED"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/lukilabs/craft-agents-oss"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/lukilabs/craft-agents-oss"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Product",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
-            ]
-          },
-          {
-            "group": "Writing content",
-            "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "concepts/overview",
+              "concepts/workspaces",
+              "concepts/sessions",
+              "concepts/agents"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "Features",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Session Management",
             "pages": [
-              "api-reference/introduction"
+              "features/sessions/overview",
+              "features/sessions/inbox",
+              "features/sessions/statuses",
+              "features/sessions/labels"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Sources & Integrations",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "features/sources/overview",
+              "features/sources/mcp-servers",
+              "features/sources/api-sources",
+              "features/sources/local-files"
+            ]
+          },
+          {
+            "group": "Skills & Customization",
+            "pages": [
+              "features/skills/overview",
+              "features/skills/creating-skills",
+              "features/skills/importing"
+            ]
+          },
+          {
+            "group": "Permissions & Security",
+            "pages": [
+              "features/permissions/modes",
+              "features/permissions/configuration",
+              "features/permissions/security"
+            ]
+          },
+          {
+            "group": "Automations",
+            "pages": [
+              "features/automations/overview",
+              "features/automations/events",
+              "features/automations/examples"
+            ]
+          },
+          {
+            "group": "Themes & UI",
+            "pages": [
+              "features/themes/overview",
+              "features/themes/customization"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Integrations",
+        "groups": [
+          {
+            "group": "LLM Providers",
+            "pages": [
+              "integrations/llm/anthropic",
+              "integrations/llm/google-ai",
+              "integrations/llm/openai",
+              "integrations/llm/github-copilot",
+              "integrations/llm/custom-endpoints"
+            ]
+          },
+          {
+            "group": "External Services",
+            "pages": [
+              "integrations/services/google-oauth",
+              "integrations/services/slack",
+              "integrations/services/microsoft"
+            ]
+          },
+          {
+            "group": "MCP Servers",
+            "pages": [
+              "integrations/mcp/overview",
+              "integrations/mcp/craft-mcp",
+              "integrations/mcp/custom-servers"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "development/architecture/overview",
+              "development/architecture/electron-app",
+              "development/architecture/packages",
+              "development/architecture/agent-backends"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "development/contributing/setup",
+              "development/contributing/building",
+              "development/contributing/guidelines"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "development/reference/configuration",
+              "development/reference/deep-linking",
+              "development/reference/troubleshooting"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

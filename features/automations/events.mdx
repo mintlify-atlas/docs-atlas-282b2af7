@@ -1,0 +1,503 @@
+---
+title: Automation Events
+description: Complete reference of all automation events, matchers, and event-specific data
+---
+
+Craft Agents supports two categories of automation events: **App Events** (handled by Craft Agents) and **Agent Events** (passed to the Claude SDK).
+
+## App Events
+
+App events are triggered by user actions and system changes within Craft Agents.
+
+### LabelAdd
+
+Triggered when a label is added to a session.
+
+**Match value:** The label name
+
+**Environment variables:**
+- `$CRAFT_LABEL` - The label that was added
+- `$CRAFT_SESSION_ID` - The session ID
+- `$CRAFT_SESSION_NAME` - The session name
+
+**Example:**
+
+```json
+{
+  "LabelAdd": [
+    {
+      "matcher": "^urgent$",
+      "labels": ["Needs Review"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Session '$CRAFT_SESSION_NAME' marked urgent. Triage immediately."
+        }
+      ]
+    }
+  ]
+}
+```
+
+<Note>
+Use regex patterns to match specific labels. Use `"matcher": ".*"` to match all labels.
+</Note>
+
+---
+
+### LabelRemove
+
+Triggered when a label is removed from a session.
+
+**Match value:** The label name
+
+**Environment variables:**
+- `$CRAFT_LABEL` - The label that was removed
+- `$CRAFT_SESSION_ID` - The session ID
+- `$CRAFT_SESSION_NAME` - The session name
+
+**Example:**
+
+```json
+{
+  "LabelRemove": [
+    {
+      "matcher": "^blocked$",
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Session unblocked: $CRAFT_SESSION_NAME. Resume work."
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### LabelConfigChange
+
+Triggered when the label configuration changes (labels added, removed, or modified).
+
+**Match value:** Empty (always matches)
+
+**Environment variables:**
+- `$CRAFT_WORKSPACE_ID` - The workspace ID
+
+**Example:**
+
+```json
+{
+  "LabelConfigChange": [
+    {
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Label configuration updated. Audit label usage across sessions."
+        }
+      ]
+    }
+  ]
+}
+```
+
+<Note>
+This event has no matcher field since it always fires when labels change.
+</Note>
+
+---
+
+### PermissionModeChange
+
+Triggered when a session's permission mode changes.
+
+**Match value:** The new permission mode
+
+**Environment variables:**
+- `$CRAFT_OLD_MODE` - Previous permission mode
+- `$CRAFT_NEW_MODE` - New permission mode
+- `$CRAFT_SESSION_ID` - The session ID
+- `$CRAFT_SESSION_NAME` - The session name
+
+**Example:**
+
+```json
+{
+  "PermissionModeChange": [
+    {
+      "matcher": "^allow-all$",
+      "labels": ["High Privilege"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Session '$CRAFT_SESSION_NAME' elevated to $CRAFT_NEW_MODE. Log for audit."
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Permission modes:**
+- `safe` - Read-only mode
+- `ask` - Prompt for approval
+- `allow-all` - Auto-approve all commands
+
+---
+
+### FlagChange
+
+Triggered when a session is flagged or unflagged.
+
+**Match value:** `true` or `false`
+
+**Environment variables:**
+- `$CRAFT_IS_FLAGGED` - `true` or `false`
+- `$CRAFT_SESSION_ID` - The session ID
+- `$CRAFT_SESSION_NAME` - The session name
+
+**Example:**
+
+```json
+{
+  "FlagChange": [
+    {
+      "matcher": "^true$",
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Session flagged: $CRAFT_SESSION_NAME. Add to priority queue."
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+### SessionStatusChange
+
+Triggered when a session's status changes in the workflow.
+
+**Match value:** The new status
+
+**Environment variables:**
+- `$CRAFT_OLD_STATE` - Previous status
+- `$CRAFT_NEW_STATE` - New status
+- `$CRAFT_SESSION_ID` - The session ID
+- `$CRAFT_SESSION_NAME` - The session name
+
+**Example:**
+
+```json
+{
+  "SessionStatusChange": [
+    {
+      "matcher": "^Done$",
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Session completed: $CRAFT_SESSION_NAME. Archive and log results."
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Default statuses:**
+- `Todo`
+- `In Progress`
+- `Needs Review`
+- `Done`
+- `Cancelled`
+
+<Note>
+Statuses are customizable per workspace. Match against your configured status labels.
+</Note>
+
+---
+
+### SchedulerTick
+
+Triggered on a cron schedule.
+
+**Match value:** Not used (uses cron matching instead)
+
+**Environment variables:**
+- `$CRAFT_LOCAL_TIME` - Local time in HH:MM format
+- `$CRAFT_LOCAL_DATE` - Local date in YYYY-MM-DD format
+- `$CRAFT_WORKSPACE_ID` - The workspace ID
+
+**Cron format:** 5-field format (minute hour day month weekday)
+
+**Example:**
+
+```json
+{
+  "SchedulerTick": [
+    {
+      "cron": "0 9 * * 1-5",
+      "timezone": "America/New_York",
+      "labels": ["Daily Standup"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Generate daily standup for $CRAFT_LOCAL_DATE at $CRAFT_LOCAL_TIME"
+        }
+      ]
+    },
+    {
+      "cron": "0 17 * * 5",
+      "timezone": "Europe/London",
+      "labels": ["Weekly Summary"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "@linear summarise this week's completed tasks"
+        }
+      ]
+    }
+  ]
+}
+```
+
+<Accordion title="Cron Syntax Guide">
+**Field order:** `minute hour day month weekday`
+
+| Field | Allowed values |
+|-------|---------------|
+| Minute | 0-59 |
+| Hour | 0-23 |
+| Day | 1-31 |
+| Month | 1-12 |
+| Weekday | 0-6 (0 = Sunday) |
+
+**Special characters:**
+- `*` - Any value
+- `,` - List (e.g., `1,3,5`)
+- `-` - Range (e.g., `1-5`)
+- `/` - Step (e.g., `*/15`)
+
+**Examples:**
+- `0 9 * * 1-5` - Weekdays at 9:00 AM
+- `0 */2 * * *` - Every 2 hours
+- `30 14 * * 1` - Mondays at 2:30 PM
+- `0 0 1 * *` - First day of month at midnight
+</Accordion>
+
+<Note>
+Always specify a timezone using IANA timezone names (e.g., `America/New_York`, `Europe/Budapest`, `Asia/Tokyo`).
+</Note>
+
+---
+
+## Agent Events
+
+Agent events are triggered by the Claude SDK during agent execution. These events are currently supported for monitoring and logging but have limited automation support.
+
+### PreToolUse
+
+Triggered before a tool is executed.
+
+**Match value:** The tool name
+
+**Available data:**
+- `tool_name` - Name of the tool
+- `tool_input` - Input parameters
+- `tool_use_id` - Unique tool use ID
+
+---
+
+### PostToolUse
+
+Triggered after a tool is executed successfully.
+
+**Match value:** The tool name
+
+**Available data:**
+- `tool_name` - Name of the tool
+- `tool_response` - Response from the tool
+- `tool_use_id` - Unique tool use ID
+
+---
+
+### PostToolUseFailure
+
+Triggered when a tool execution fails.
+
+**Match value:** The tool name
+
+**Available data:**
+- `tool_name` - Name of the tool
+- `error` - Error message
+- `tool_use_id` - Unique tool use ID
+
+---
+
+### Notification
+
+Triggered when the agent sends a notification.
+
+**Match value:** The notification message
+
+**Available data:**
+- `message` - Notification message
+- `title` - Notification title (optional)
+
+---
+
+### UserPromptSubmit
+
+Triggered when a user submits a prompt.
+
+**Match value:** Empty
+
+**Available data:**
+- `prompt` - The user's prompt text
+
+---
+
+### SessionStart
+
+Triggered when a session starts.
+
+**Match value:** The session source
+
+**Available data:**
+- `source` - Session source (startup, resume, clear, compact)
+- `model` - Model being used
+
+---
+
+### SessionEnd
+
+Triggered when a session ends.
+
+**Match value:** Empty
+
+**Available data:**
+- Session metadata
+
+---
+
+### Stop
+
+Triggered when execution is stopped.
+
+**Match value:** Empty
+
+---
+
+### SubagentStart
+
+Triggered when a subagent starts.
+
+**Match value:** The agent type
+
+**Available data:**
+- `agent_id` - Subagent ID
+- `agent_type` - Type of subagent
+
+---
+
+### SubagentStop
+
+Triggered when a subagent stops.
+
+**Match value:** The agent type
+
+**Available data:**
+- `agent_id` - Subagent ID
+- `agent_type` - Type of subagent
+
+---
+
+### PreCompact
+
+Triggered before conversation compaction.
+
+**Match value:** Empty
+
+---
+
+### PermissionRequest
+
+Triggered when the agent requests permission.
+
+**Match value:** The tool name
+
+**Available data:**
+- `tool_name` - Tool requiring permission
+- `tool_input` - Tool input parameters
+
+---
+
+### Setup
+
+Triggered during agent setup.
+
+**Match value:** Empty
+
+---
+
+## Regex Matchers
+
+All events (except SchedulerTick) support regex patterns for matching:
+
+### Match Specific Values
+
+```json
+{
+  "matcher": "^urgent$"
+}
+```
+
+### Match Multiple Values
+
+```json
+{
+  "matcher": "^(urgent|critical|blocker)$"
+}
+```
+
+### Match Prefix
+
+```json
+{
+  "matcher": "^bug-"
+}
+```
+
+### Match All
+
+```json
+{
+  "matcher": ".*"
+}
+```
+
+or omit the `matcher` field entirely:
+
+```json
+{
+  "actions": [{ "type": "prompt", "prompt": "Process all events" }]
+}
+```
+
+<Note>
+Invalid regex patterns are silently skipped. Test your patterns before deploying.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="book" href="./overview">
+    Learn the basics of automation configuration
+  </Card>
+  <Card title="Examples" icon="code" href="/features/automations/examples">
+    Explore real-world automation recipes
+  </Card>
+</CardGroup>

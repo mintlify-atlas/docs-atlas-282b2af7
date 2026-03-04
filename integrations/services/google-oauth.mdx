@@ -1,0 +1,315 @@
+---
+title: 'Google OAuth Setup'
+description: 'Configure Google Cloud OAuth credentials for Gmail, Calendar, and Drive integration'
+icon: 'google'
+---
+
+<Note>
+Google OAuth credentials are **not** baked into the build. You must create your own OAuth credentials through Google Cloud Console. This is a one-time setup that takes about 10 minutes.
+</Note>
+
+## Overview
+
+Craft Agents integrates with Google services (Gmail, Calendar, Drive, Docs, Sheets) using OAuth 2.0 with PKCE (Proof Key for Code Exchange). Your credentials are stored encrypted locally using AES-256-GCM encryption.
+
+## Prerequisites
+
+- A Google account
+- Access to [Google Cloud Console](https://console.cloud.google.com)
+- 10 minutes for initial setup
+
+## Complete Setup Guide
+
+<Steps>
+
+<Step title="Create a Google Cloud Project">
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com)
+2. Click **Select a project** → **New Project**
+3. Enter a project name (e.g., "My Craft Agent")
+4. Click **Create**
+5. Note your Project ID for reference
+
+</Step>
+
+<Step title="Enable Required APIs">
+
+Go to **APIs & Services → Library** and enable the APIs you need:
+
+<Accordion title="Gmail API">
+  
+  **For email integration**
+  
+  - Read, send, and manage email
+  - Create and manage drafts
+  - Label and organize messages
+  - Mark messages as read/unread
+  
+  Search for "Gmail API" and click **Enable**
+  
+</Accordion>
+
+<Accordion title="Google Calendar API">
+  
+  **For calendar integration**
+  
+  - View and manage calendar events
+  - Create and update events
+  - Manage calendar access
+  
+  Search for "Google Calendar API" and click **Enable**
+  
+</Accordion>
+
+<Accordion title="Google Drive API">
+  
+  **For file storage integration**
+  
+  - Access and manage files
+  - Upload and download documents
+  - Share and organize folders
+  
+  Search for "Google Drive API" and click **Enable**
+  
+</Accordion>
+
+<Note>
+You can enable multiple APIs for the same project. Enable only the APIs you plan to use.
+</Note>
+
+</Step>
+
+<Step title="Configure OAuth Consent Screen">
+
+1. Go to **APIs & Services → OAuth consent screen**
+2. Select **External** user type (unless you have Google Workspace)
+3. Click **Create**
+
+**Fill in required fields:**
+
+- **App name**: e.g., "My Craft Agent"
+- **User support email**: Your email address
+- **Developer contact information**: Your email address
+
+4. Click **Save and Continue**
+5. **Scopes**: Skip this step (click **Save and Continue**)
+6. **Test users**: Add yourself as a test user
+   - Click **Add Users**
+   - Enter your Google email
+   - Click **Add**
+7. Click **Save and Continue**
+8. Review and click **Back to Dashboard**
+
+<Warning>
+**External apps in testing mode** can only be used by test users you add. For production use with multiple users, you'll need to get your app verified by Google.
+</Warning>
+
+</Step>
+
+<Step title="Create OAuth Credentials">
+
+1. Go to **APIs & Services → Credentials**
+2. Click **Create Credentials → OAuth Client ID**
+3. **Application type**: Select **Desktop app**
+4. **Name**: e.g., "Craft Agent Desktop"
+5. Click **Create**
+6. A dialog appears with your credentials:
+   - **Client ID**: `something.apps.googleusercontent.com`
+   - **Client Secret**: `your-client-secret`
+7. Click **Download JSON** (optional, for backup)
+8. Copy both the **Client ID** and **Client Secret**
+
+<Note>
+Keep your Client Secret secure. Never commit it to version control or share it publicly.
+</Note>
+
+</Step>
+
+<Step title="Configure in Craft Agent">
+
+**Option 1: Let the agent guide you**
+
+Simply tell the agent:
+
+```
+Connect to my Gmail account
+```
+
+The agent will prompt you for your Google OAuth credentials during setup.
+
+**Option 2: Manual configuration**
+
+When setting up a Google source, add these fields to your source's `config.json`:
+
+<CodeGroup>
+
+```json Gmail
+{
+  "api": {
+    "googleService": "gmail",
+    "googleOAuthClientId": "your-client-id.apps.googleusercontent.com",
+    "googleOAuthClientSecret": "your-client-secret"
+  }
+}
+```
+
+```json Calendar
+{
+  "api": {
+    "googleService": "calendar",
+    "googleOAuthClientId": "your-client-id.apps.googleusercontent.com",
+    "googleOAuthClientSecret": "your-client-secret"
+  }
+}
+```
+
+```json Drive
+{
+  "api": {
+    "googleService": "drive",
+    "googleOAuthClientId": "your-client-id.apps.googleusercontent.com",
+    "googleOAuthClientSecret": "your-client-secret"
+  }
+}
+```
+
+</CodeGroup>
+
+</Step>
+
+</Steps>
+
+## OAuth Flow
+
+When you authenticate:
+
+1. **Browser opens** to Google consent screen
+2. **Sign in** with your Google account
+3. **Review permissions** and click Allow
+4. **Redirected back** to Craft Agent
+5. **Tokens stored** encrypted in `~/.craft-agent/credentials.enc`
+
+## Scopes by Service
+
+<Accordion title="Gmail Scopes">
+
+- `https://www.googleapis.com/auth/gmail.modify` - Read, trash, labels, mark read/unread
+- `https://www.googleapis.com/auth/gmail.compose` - Create and send drafts
+- `https://www.googleapis.com/auth/userinfo.email` - Access email address
+
+</Accordion>
+
+<Accordion title="Calendar Scopes">
+
+- `https://www.googleapis.com/auth/calendar` - Full calendar access
+- `https://www.googleapis.com/auth/userinfo.email` - Access email address
+
+</Accordion>
+
+<Accordion title="Drive Scopes">
+
+- `https://www.googleapis.com/auth/drive` - Full Drive access
+- `https://www.googleapis.com/auth/userinfo.email` - Access email address
+
+</Accordion>
+
+<Accordion title="Docs Scopes">
+
+- `https://www.googleapis.com/auth/documents` - Full Docs access
+- `https://www.googleapis.com/auth/userinfo.email` - Access email address
+
+</Accordion>
+
+<Accordion title="Sheets Scopes">
+
+- `https://www.googleapis.com/auth/spreadsheets` - Full Sheets access
+- `https://www.googleapis.com/auth/userinfo.email` - Access email address
+
+</Accordion>
+
+## Token Refresh
+
+Google access tokens expire after 1 hour. Craft Agent automatically refreshes them using the refresh token:
+
+- Access tokens are refreshed automatically before API calls
+- Refresh tokens are long-lived (no expiration)
+- Your credentials are stored securely for automatic refresh
+
+## Security Notes
+
+<Warning>
+**Important Security Practices**
+
+- Your OAuth credentials are stored **encrypted** in `~/.craft-agent/credentials.enc` using AES-256-GCM
+- Client ID and Client Secret are stored alongside tokens for automatic refresh
+- Never commit credentials to version control
+- For production use, consider getting your OAuth consent screen verified by Google
+- Test user limit: 100 users while app is in testing mode
+
+</Warning>
+
+## Troubleshooting
+
+<Accordion title="Error: Google OAuth not configured">
+
+You haven't provided OAuth credentials. Either:
+
+1. Provide `clientId` and `clientSecret` in source config
+2. Set `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` environment variables (development only)
+
+</Accordion>
+
+<Accordion title="Error: Access blocked - This app's request is invalid">
+
+Your OAuth consent screen is not properly configured:
+
+1. Verify you added yourself as a test user
+2. Check that required APIs are enabled
+3. Ensure redirect URI matches (should be `http://localhost:{port}/callback`)
+
+</Accordion>
+
+<Accordion title="Error: OAuth state mismatch">
+
+Possible CSRF attack detected. This can happen if:
+
+1. You have multiple OAuth flows running simultaneously
+2. Your system time is incorrect
+3. You're behind a proxy that modifies requests
+
+Try again with a fresh authentication flow.
+
+</Accordion>
+
+<Accordion title="Token refresh fails">
+
+Refresh token might be invalid:
+
+1. Re-authenticate to get a new refresh token
+2. Ensure `offline_access` and `prompt=consent` are used during OAuth (automatic in Craft Agent)
+3. Check that Client ID and Client Secret are stored correctly
+
+</Accordion>
+
+## Environment Variables (Development)
+
+For development/testing, you can set OAuth credentials as environment variables:
+
+```bash .env
+# OPTIONAL - for development/testing only
+# Users should provide their own credentials via source configuration
+GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
+```
+
+<Note>
+Environment variables serve as a fallback. User-provided credentials in source config take precedence.
+</Note>
+
+## Related Resources
+
+- [Google Cloud Console](https://console.cloud.google.com)
+- [Google OAuth 2.0 Documentation](https://developers.google.com/identity/protocols/oauth2)
+- [Gmail API Reference](https://developers.google.com/gmail/api)
+- [Google Calendar API Reference](https://developers.google.com/calendar)
+- [Google Drive API Reference](https://developers.google.com/drive)

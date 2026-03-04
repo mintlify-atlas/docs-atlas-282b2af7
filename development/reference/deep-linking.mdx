@@ -1,0 +1,299 @@
+---
+title: Deep Linking
+description: Navigate Craft Agents from external applications using the craftagents:// protocol
+icon: link
+---
+
+Craft Agents supports deep linking via the `craftagents://` URL protocol, allowing external applications and automation tools to navigate to specific views, create sessions, and trigger actions.
+
+## URL Protocol
+
+All deep links use the custom protocol:
+
+```
+craftagents://[workspace/{workspace-id}/]{route}
+```
+
+<Note>
+The workspace ID is optional. If omitted, the link uses the currently focused window.
+</Note>
+
+## URL Formats
+
+Deep links support two primary formats:
+
+### Compound Routes (Hierarchical Navigation)
+
+```
+craftagents://allSessions[/session/{sessionId}]
+craftagents://flagged[/session/{sessionId}]
+craftagents://state/{stateId}[/session/{sessionId}]
+craftagents://sources[/source/{sourceSlug}]
+craftagents://settings[/{subpage}]
+craftagents://skills[/skill/{skillId}]
+```
+
+### Action Routes
+
+```
+craftagents://action/{actionName}[/{id}][?params]
+craftagents://workspace/{workspaceId}/action/{actionName}[?params]
+```
+
+## Navigation Examples
+
+### Session Management
+
+<CodeGroup>
+```bash All Sessions View
+craftagents://allSessions
+```
+
+```bash Specific Session
+craftagents://allSessions/session/abc123
+```
+
+```bash Flagged Sessions
+craftagents://flagged
+```
+
+```bash Sessions by Status
+craftagents://state/in-progress
+```
+</CodeGroup>
+
+### Settings Navigation
+
+<CodeGroup>
+```bash General Settings
+craftagents://settings
+```
+
+```bash Keyboard Shortcuts
+craftagents://settings/shortcuts
+```
+
+```bash Preferences
+craftagents://settings/preferences
+```
+</CodeGroup>
+
+### Source Management
+
+<CodeGroup>
+```bash Sources List
+craftagents://sources
+```
+
+```bash Specific Source
+craftagents://sources/source/github
+```
+</CodeGroup>
+
+## Actions
+
+Actions trigger specific operations within the application.
+
+### Create New Chat
+
+Create a new chat session with optional pre-filled input:
+
+<CodeGroup>
+```bash Basic
+craftagents://action/new-chat
+```
+
+```bash With Input
+craftagents://action/new-chat?input=Hello%20agent&name=My%20Chat
+```
+
+```bash Send Immediately
+craftagents://action/new-chat?input=Run%20tests&send=true
+```
+</CodeGroup>
+
+<ParamField query="input" type="string">
+  Pre-fill the chat input with this text
+</ParamField>
+
+<ParamField query="name" type="string">
+  Set the session name (otherwise auto-generated)
+</ParamField>
+
+<ParamField query="send" type="boolean">
+  If `true` and `input` is provided, immediately send the message
+</ParamField>
+
+### Session Actions
+
+<CodeGroup>
+```bash Resume Claude Code Session
+craftagents://action/resume-sdk-session/{sdk-session-id}
+```
+
+```bash Delete Session
+craftagents://action/delete-session/{session-id}
+```
+
+```bash Flag Session
+craftagents://action/flag-session/{session-id}
+```
+
+```bash Unflag Session
+craftagents://action/unflag-session/{session-id}
+```
+</CodeGroup>
+
+## Workspace Targeting
+
+Explicitly target a specific workspace by prefixing the route:
+
+<CodeGroup>
+```bash Target Workspace
+craftagents://workspace/ws-123/allSessions/session/abc123
+```
+
+```bash Workspace Action
+craftagents://workspace/ws-123/action/new-chat?input=Hello
+```
+</CodeGroup>
+
+## Window Management
+
+Control how links open using query parameters:
+
+<ParamField query="window" type="enum">
+  - `focused` - Open in a new focused window
+  - `full` - Open in a new full-screen window
+</ParamField>
+
+<CodeGroup>
+```bash New Focused Window
+craftagents://allSessions?window=focused
+```
+
+```bash New Full Window
+craftagents://sources/source/github?window=full
+```
+</CodeGroup>
+
+## Sidebar Control
+
+Open links with a specific right sidebar state:
+
+<ParamField query="sidebar" type="string">
+  Right sidebar route (e.g., `files/path/to/file`, `history`)
+</ParamField>
+
+```bash
+craftagents://allSessions/session/abc123?sidebar=files/src/main.ts
+```
+
+## Implementation Details
+
+Deep link handling is implemented in `apps/electron/src/main/deep-link.ts`.
+
+### URL Parsing
+
+The `parseDeepLink()` function parses URLs into structured targets:
+
+<Accordion title="DeepLinkTarget Interface">
+```typescript
+export interface DeepLinkTarget {
+  /** Workspace ID - undefined means use active window */
+  workspaceId?: string
+  /** Compound route format (e.g., 'allSessions/session/abc123') */
+  view?: string
+  /** Action route (e.g., 'new-chat', 'delete-session') */
+  action?: string
+  actionParams?: Record<string, string>
+  /** Window mode - if set, opens in a new window */
+  windowMode?: 'focused' | 'full'
+  /** Right sidebar param (e.g., 'files/path/to/file') */
+  rightSidebar?: string
+}
+```
+</Accordion>
+
+### Navigation Flow
+
+1. **Parse URL** - Extract target workspace, route, and parameters
+2. **Resolve Window** - Get or create target window
+3. **Wait for Ready** - Ensure renderer is loaded (100ms delay after `did-finish-load`)
+4. **Send IPC** - Dispatch navigation via `IPC_CHANNELS.DEEP_LINK_NAVIGATE`
+
+<Warning>
+The 100ms delay after `did-finish-load` allows React to mount and register IPC listeners. This is necessary because `did-finish-load` fires when HTML is loaded, but before React's `useEffect` hooks run.
+</Warning>
+
+### Protocol Registration
+
+The protocol is registered at app launch in the Electron main process:
+
+```typescript
+// Register as default protocol handler
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient('craftagents', process.execPath, [path.resolve(process.argv[1])])
+  }
+} else {
+  app.setAsDefaultProtocolClient('craftagents')
+}
+```
+
+## Use Cases
+
+### Task Automation
+
+Trigger agent sessions from task runners:
+
+```bash
+# From a GitHub Action
+open "craftagents://action/new-chat?input=Deploy%20to%20production&send=true"
+
+# From a cron job
+open "craftagents://action/new-chat?input=Daily%20standup%20summary&send=true"
+```
+
+### IDE Integration
+
+Create VS Code extension commands:
+
+```typescript
+vscode.commands.registerCommand('craft-agents.openSession', (sessionId) => {
+  vscode.env.openExternal(vscode.Uri.parse(`craftagents://allSessions/session/${sessionId}`))
+})
+```
+
+### Browser Extensions
+
+Navigate from web pages:
+
+```javascript
+// Open Craft Agents with selected text
+const selectedText = window.getSelection().toString()
+window.location.href = `craftagents://action/new-chat?input=${encodeURIComponent(selectedText)}`
+```
+
+## OAuth Callbacks
+
+Deep links with the `auth-callback` host are reserved for OAuth flows:
+
+```
+craftagents://auth-callback?code=...&state=...
+```
+
+<Note>
+Auth callback URLs return `null` from `parseDeepLink()` and are handled by a separate OAuth handler.
+</Note>
+
+## Related Files
+
+<CardGroup cols={2}>
+  <Card title="Deep Link Handler" icon="code" href="https://github.com/lukilabs/craft-agents-oss/blob/main/apps/electron/src/main/deep-link.ts">
+    View the full implementation
+  </Card>
+  <Card title="IPC Channels" icon="bolt" href="https://github.com/lukilabs/craft-agents-oss/blob/main/apps/electron/src/shared/types.ts">
+    See IPC channel definitions
+  </Card>
+</CardGroup>

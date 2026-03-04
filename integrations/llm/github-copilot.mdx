@@ -1,0 +1,297 @@
+---
+title: GitHub Copilot
+description: Connect using your GitHub Copilot subscription with device code OAuth
+icon: github
+---
+
+Craft Agents supports GitHub Copilot's LLM API, allowing you to use your existing Copilot subscription to access Claude, GPT, and other models.
+
+## Why GitHub Copilot?
+
+<CardGroup cols={2}>
+  <Card title="Use Existing Subscription" icon="credit-card">
+    Already have Copilot? No need for separate API keys
+  </Card>
+  <Card title="Multiple Models" icon="layer-group">
+    Access Claude Sonnet, GPT-5, o4-mini, and more
+  </Card>
+  <Card title="One-Click Authentication" icon="fingerprint">
+    OAuth device flow - no API keys to manage
+  </Card>
+  <Card title="Higher Rate Limits" icon="gauge-high">
+    Copilot subscriptions include generous usage limits
+  </Card>
+</CardGroup>
+
+## Requirements
+
+You need an active GitHub Copilot subscription:
+
+- **GitHub Copilot Individual** ($10/month)
+- **GitHub Copilot Business** (through your organization)
+- **GitHub Copilot Enterprise** (advanced features)
+
+<Note>
+  Students, teachers, and open source maintainers can get Copilot for free through [GitHub Education](https://education.github.com/).
+</Note>
+
+## Setup with Device Code OAuth
+
+GitHub Copilot uses the **device code OAuth flow** - a secure authentication method designed for devices without web browsers.
+
+<Steps>
+  <Step title="Start authentication">
+    1. Open **Settings** → **AI Connections**
+    2. Click **Add Connection**
+    3. Select **GitHub Copilot (OAuth)**
+    4. Click **Authenticate with GitHub**
+  </Step>
+
+  <Step title="Get device code">
+    Craft Agents will display a device code and verification URL:
+    
+    ```
+    User Code: ABCD-1234
+    URL: https://github.com/login/device
+    ```
+    
+    Click the link to open GitHub in your browser (or copy the code manually).
+  </Step>
+
+  <Step title="Enter code on GitHub">
+    1. Go to [github.com/login/device](https://github.com/login/device)
+    2. Enter the **user code** shown in Craft Agents
+    3. Click **Continue**
+    4. Review the permissions:
+       - Access to Copilot API
+       - Model selection
+       - Usage analytics
+    5. Click **Authorize**
+  </Step>
+
+  <Step title="Wait for authentication">
+    Craft Agents will automatically poll GitHub for authentication. Once you authorize, the connection will be saved automatically.
+    
+    <Note>
+      Device codes expire after 15 minutes. If you wait too long, you'll need to restart the flow.
+    </Note>
+  </Step>
+</Steps>
+
+### Implementation Details
+
+The device code flow is implemented using the Pi SDK's native GitHub Copilot support:
+
+```typescript
+// apps/electron/src/main/ipc.ts:1946-2019
+
+import { login } from '@mariozechner/pi-ai';
+
+const result = await login({
+  provider: 'github-copilot',
+  onDeviceCode: ({ userCode, verificationUri }) => {
+    // Display code to user
+    event.sender.send(IPC_CHANNELS.COPILOT_DEVICE_CODE, {
+      userCode,
+      verificationUri,
+    });
+    // Open GitHub in browser
+    shell.openExternal(verificationUri);
+  },
+  signal: abortController.signal,
+});
+
+// result.authToken contains the OAuth access token
+```
+
+Source: `apps/electron/src/main/ipc.ts:1946-2019`
+
+<Warning>
+  OAuth tokens are stored encrypted using AES-256-GCM in `~/.craft-agent/credentials.enc`. They are automatically refreshed when they expire.
+</Warning>
+
+## Available Models
+
+GitHub Copilot provides access to multiple LLM providers:
+
+<CodeGroup>
+```typescript Claude Models
+'claude-sonnet-4.6'  // Anthropic Claude (recommended for coding)
+'claude-haiku-4.5'   // Fast model for simple tasks
+```
+
+```typescript OpenAI Models
+'gpt-5'       // Latest GPT (if available)
+'o4-mini'     // Fast reasoning model
+'gpt-4o'      // Omni model (text + vision)
+```
+</CodeGroup>
+
+**Preferred defaults** (in order of preference):
+```typescript
+['claude-sonnet-4.6', 'gpt-5', 'o4-mini', 'claude-haiku-4.5']
+```
+
+Source: `packages/shared/src/config/llm-connections.ts:415`
+
+<Note>
+  Model availability depends on your Copilot subscription tier and GitHub's model rollout. Check the [Copilot models documentation](https://docs.github.com/copilot/models) for the latest list.
+</Note>
+
+## Pricing
+
+GitHub Copilot uses a **flat subscription fee** - no per-token billing:
+
+| Plan | Price | Models Included |
+|------|-------|----------------|
+| **Individual** | $10/month | All supported models |
+| **Business** | $19/user/month | All models + admin controls |
+| **Enterprise** | Custom | All models + advanced features |
+
+<Tip>
+  Unlike direct API access to Claude or GPT, Copilot subscriptions include unlimited usage within fair use limits. This makes it cost-effective for heavy users.
+</Tip>
+
+## Using Pi Unified API
+
+GitHub Copilot connections use the [Pi unified LLM API](https://www.npmjs.com/package/@mariozechner/pi-ai) with the `github-copilot` auth provider:
+
+```typescript
+{
+  providerType: 'pi',
+  piAuthProvider: 'github-copilot',
+  authType: 'oauth',
+  models: [...], // Auto-detected from Copilot API
+}
+```
+
+The Pi SDK automatically:
+- Fetches available models from the Copilot API
+- Handles token refresh
+- Routes requests to the correct model endpoint
+
+Source: `packages/shared/src/agent/pi-agent.ts:351-533`
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No active Copilot subscription">
+    **Error:** `Access denied. Check your API key permissions.`
+    
+    **Solutions:**
+    - Verify you have an active Copilot subscription at [github.com/settings/copilot](https://github.com/settings/copilot)
+    - If using Copilot through an organization, ensure your org admin has enabled Copilot for your account
+    - Check that your GitHub account is in good standing (no payment issues)
+  </Accordion>
+
+  <Accordion title="Device code expired">
+    **Error:** `OAuth state expired (older than 10 minutes). Please try again.`
+    
+    Device codes expire after 15 minutes. Click **Cancel** in Craft Agents and restart the authentication flow.
+  </Accordion>
+
+  <Accordion title="Rate limits">
+    **Error:** `Rate limited or quota exceeded. Try again later.`
+    
+    GitHub Copilot enforces fair use limits:
+    - Too many requests in a short time
+    - Unusual usage patterns
+    
+    Wait a few minutes and try again. If the issue persists, contact GitHub support.
+  </Accordion>
+
+  <Accordion title="Token refresh failed">
+    **Problem:** Connection works initially but stops after a few hours.
+    
+    OAuth tokens expire and must be refreshed. If refresh fails:
+    1. Go to **Settings** → **AI Connections**
+    2. Click the **⋮** menu next to your Copilot connection
+    3. Select **Sign out**
+    4. Re-authenticate using the device code flow
+    
+    <Note>
+      Craft Agents automatically refreshes tokens when they expire. Manual re-authentication is rarely needed.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Model not available">
+    **Error:** `Model not found. Check the connection configuration.`
+    
+    Some models may not be available on all Copilot tiers:
+    - **Claude Sonnet 4.6** requires Copilot Individual or higher
+    - **GPT-5** may require special access
+    - Try switching to `claude-sonnet-4.6` or `gpt-4o` (most widely available)
+  </Accordion>
+</AccordionGroup>
+
+## Signing Out
+
+To revoke Craft Agents' access to your GitHub account:
+
+<Steps>
+  <Step title="Sign out in Craft Agents">
+    1. Open **Settings** → **AI Connections**
+    2. Click the **⋮** menu next to your Copilot connection
+    3. Select **Sign out**
+  </Step>
+
+  <Step title="Revoke on GitHub (optional)">
+    To fully revoke access:
+    1. Go to [github.com/settings/applications](https://github.com/settings/applications)
+    2. Find **GitHub Copilot** in the list
+    3. Click **Revoke**
+  </Step>
+</Steps>
+
+## Copilot CLI Integration
+
+Craft Agents uses the native Copilot CLI (if installed) for improved model detection:
+
+```typescript
+// packages/shared/src/agent/backend/internal/runtime-resolver.ts:90-99
+
+const binaryName = platform === 'win32' ? 'copilot.exe' : 'copilot';
+const packaged = join(
+  hostRuntime.appRootPath,
+  'vendor', 'copilot',
+  `${platform}-${arch}`,
+  binaryName
+);
+```
+
+Source: `packages/shared/src/agent/backend/internal/runtime-resolver.ts:90-99`
+
+The CLI is bundled with Craft Agents for macOS and Windows. Linux users can install it separately:
+
+```bash
+npm install -g @github/copilot-cli
+```
+
+<Note>
+  The Copilot CLI is optional. Craft Agents works without it, but model detection may be slower.
+</Note>
+
+## Comparing Copilot to Direct API Keys
+
+| Feature | GitHub Copilot | Anthropic API | OpenAI API |
+|---------|----------------|---------------|------------|
+| **Cost** | $10/month (flat) | Pay-per-use | Pay-per-use |
+| **Models** | Claude + GPT + more | Claude only | GPT only |
+| **Setup** | OAuth (easy) | API key | API key |
+| **Rate limits** | Fair use | Tier-based | Tier-based |
+| **Billing** | Monthly subscription | Per-token | Per-token |
+
+<Tip>
+  If you already have a Copilot subscription, it's the most cost-effective way to access Claude and GPT models. For heavy usage, consider direct API keys for better rate limits.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Add More Providers" icon="layer-group" href="/integrations/llm/custom-endpoints">
+    Connect to OpenRouter, Ollama, or custom endpoints
+  </Card>
+  <Card title="Configure Permissions" icon="shield-check" href="/customization/permissions">
+    Set up read-only or auto-approve modes
+  </Card>
+</CardGroup>

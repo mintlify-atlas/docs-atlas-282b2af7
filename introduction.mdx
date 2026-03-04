@@ -1,0 +1,176 @@
+---
+title: Introduction
+description: A powerful desktop tool for working with AI agents in an intuitive, document-centric interface
+---
+
+## What is Craft Agents?
+
+Craft Agents is an agent-native desktop application that gives you a beautiful, fluid workspace for collaborating with Claude and other AI agents. It combines the power of Claude Code with an intuitive multi-session interface, no-friction API connections, and workspace-level organization.
+
+<Note>
+Built by the team at [Craft](https://craft.do) to improve how we work with agents, Craft Agents is now open source under Apache 2.0.
+</Note>
+
+## How it Works
+
+Watch this 2-minute video to see Craft Agents in action:
+
+<Card title="Demo Video" icon="play" href="https://www.youtube.com/watch?v=xQouiAIilvU">
+  See how Craft Agents enables intuitive multitasking, effortless API connections, and beautiful agent workflows
+</Card>
+
+## Why We Built It
+
+At Craft, we wanted a better way to work with agents. We needed:
+
+- **Intuitive multitasking** - Manage multiple agent sessions like tasks in an inbox
+- **Document-centric workflow** - Focus on conversations, not code editors
+- **No-fluff connections** - "Add Linear as a source" should just work
+- **Beautiful UI** - Fluid, responsive interface that feels natural
+- **Full customization** - Built entirely with agents, for agents
+
+<Tip>
+Craft Agents is built using agent-native software principles. In fact, we build Craft Agents **with** Craft Agents - no traditional code editors needed!
+</Tip>
+
+## Key Features
+
+### Multi-Session Inbox
+Desktop app with session management, customizable status workflow (Todo → In Progress → Done), and flagging for important conversations.
+
+### Universal Connections
+Connect to anything - MCP servers, REST APIs, local filesystems. Just tell the agent "add Slack as a source" and it handles the rest.
+
+<CodeGroup>
+```bash Example: MCP Server
+# User: "Add Linear as a source"
+# Agent finds the MCP server, reads docs, sets up OAuth
+```
+
+```bash Example: REST API
+# User: "Connect to our internal API"
+# Agent: (paste OpenAPI spec or endpoint URLs)
+```
+
+```bash Example: Local Files
+# User: "Add my Obsidian vault"
+# Agent creates filesystem source
+```
+</CodeGroup>
+
+### Multiple LLM Providers
+Support for Anthropic (API key or Claude Max), Google AI Studio, ChatGPT Plus, GitHub Copilot, OpenRouter, Ollama, and any OpenAI-compatible API.
+
+### Permission Modes
+Three-level permission system:
+- **Explore** - Read-only mode for safe browsing
+- **Ask to Edit** - Prompt before making changes (default)
+- **Auto** - Auto-approve all operations
+
+Toggle instantly with **SHIFT+TAB**.
+
+### Skills & Sources
+- **Skills** - Specialized agent instructions (compatible with Claude Code SDK format)
+- **Sources** - MCP servers, APIs, and filesystems with workspace-level management
+- **Automations** - Event-driven workflows triggered by labels, schedules, tool use
+
+### Advanced Features
+- Multi-file diff viewer (VS Code-style)
+- File attachments (drag-drop images, PDFs, Office docs)
+- Background tasks with progress tracking
+- Dynamic status system (customizable workflow states)
+- Theme system (app and workspace-level)
+- Deep linking via `craftagents://` URLs
+
+## Things That "Just Work"
+
+<Warning>
+These features sound too good to be true - but they really work!
+</Warning>
+
+**Connect to any service:**
+> "Add Linear as a source" → Agent finds the MCP server, reads documentation, sets up OAuth, and configures everything. No config files needed.
+
+**Paste MCP configs:**
+> Already have Claude Code MCP JSON? Paste it. Done.
+
+**Local MCP servers:**
+> Point at an npx command, Python script, or binary. Works with stdio-based servers.
+
+**Custom APIs:**
+> Paste an OpenAPI spec, endpoint URLs, or screenshots of docs. The agent figures it out.
+
+**Import from Claude Code:**
+> "Import my skills from Claude Code" → All skills migrate automatically.
+
+**No restarts:**
+> Changes are instant. Mention new skills or sources with `@` mid-conversation.
+
+## Architecture
+
+Craft Agents is built as an Electron desktop application:
+
+```
+craft-agent/
+├── apps/
+│   └── electron/              # Desktop GUI
+│       └── src/
+│           ├── main/          # Electron main process
+│           ├── preload/       # Context bridge
+│           └── renderer/      # React UI (Vite + shadcn)
+└── packages/
+    ├── core/                  # Shared types
+    └── shared/                # Business logic
+        └── src/
+            ├── agent/         # CraftAgent, permissions
+            ├── auth/          # OAuth, tokens
+            ├── config/        # Storage, themes
+            ├── credentials/   # AES-256-GCM encrypted storage
+            ├── sessions/      # Session persistence
+            ├── sources/       # MCP, API, local sources
+            └── statuses/      # Dynamic status system
+```
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Runtime | [Bun](https://bun.sh/) |
+| AI Backend | [@anthropic-ai/claude-agent-sdk](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) |
+| AI Backend (Alt) | Pi SDK agent server |
+| Desktop | [Electron](https://www.electronjs.org/) + React |
+| UI | [shadcn/ui](https://ui.shadcn.com/) + Tailwind CSS v4 |
+| Build | esbuild (main) + Vite (renderer) |
+| Credentials | AES-256-GCM encrypted file storage |
+
+## Configuration Storage
+
+All configuration lives at `~/.craft-agent/`:
+
+```
+~/.craft-agent/
+├── config.json              # Main config (workspaces, LLM connections)
+├── credentials.enc          # Encrypted credentials (AES-256-GCM)
+├── preferences.json         # User preferences
+├── theme.json               # App-level theme
+└── workspaces/
+    └── {id}/
+        ├── config.json      # Workspace settings
+        ├── theme.json       # Workspace theme override
+        ├── automations.json  # Event-driven automations
+        ├── sessions/        # Session data (JSONL)
+        ├── sources/         # Connected sources
+        ├── skills/          # Custom skills
+        └── statuses/        # Status configuration
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Craft Agents with one command
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get from zero to your first agent session
+  </Card>
+</CardGroup>

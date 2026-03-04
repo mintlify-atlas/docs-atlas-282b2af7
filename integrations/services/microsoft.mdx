@@ -1,0 +1,459 @@
+---
+title: 'Microsoft OAuth Setup'
+description: 'Configure Azure AD OAuth for Outlook, OneDrive, Calendar, Teams, and SharePoint'
+icon: 'microsoft'
+---
+
+<Note>
+Microsoft OAuth uses **PKCE flow** (Proof Key for Code Exchange) with a public client. No client secret is required for desktop applications.
+</Note>
+
+## Overview
+
+Craft Agents integrates with Microsoft 365 services using Azure AD OAuth 2.0. Supports both **personal Microsoft accounts** and **work/school accounts** (Azure AD) through the "common" tenant endpoint.
+
+**Supported Services:**
+
+- **Outlook**: Email, contacts, calendar events
+- **OneDrive**: File storage and sharing
+- **Microsoft Calendar**: Event management
+- **Teams**: Chat, channels, messages
+- **SharePoint**: Site and document access
+
+## Prerequisites
+
+- A Microsoft account (personal or work/school)
+- Access to [Azure Portal](https://portal.azure.com)
+- 10 minutes for initial setup
+
+## Complete Setup Guide
+
+<Steps>
+
+<Step title="Create Azure App Registration">
+
+1. Go to [Azure Portal](https://portal.azure.com)
+2. Search for **Azure Active Directory** (or **Microsoft Entra ID**)
+3. Click **App registrations** in left sidebar
+4. Click **New registration**
+
+**Configure your app:**
+
+- **Name**: e.g., "Craft Agent Desktop"
+- **Supported account types**: 
+  - Choose **Accounts in any organizational directory and personal Microsoft accounts**
+  - This supports both work/school and personal accounts
+- **Redirect URI**: Leave blank (add in next step)
+
+5. Click **Register**
+6. Note your **Application (client) ID** — you'll need this
+
+</Step>
+
+<Step title="Add Mobile and Desktop Platform">
+
+1. In your app registration, click **Authentication** in left sidebar
+2. Click **Add a platform**
+3. Select **Mobile and desktop applications**
+4. Check **https://login.microsoftonline.com/common/oauth2/nativeclient**
+5. Add custom redirect URI: `http://localhost/callback`
+   - This allows the OAuth callback to work on any local port
+6. Click **Configure**
+
+<Note>
+**PKCE flow** is automatically used for mobile and desktop applications. No client secret is needed.
+</Note>
+
+</Step>
+
+<Step title="Configure API Permissions">
+
+1. Click **API permissions** in left sidebar
+2. Click **Add a permission**
+3. Select **Microsoft Graph**
+4. Choose **Delegated permissions** (not Application permissions)
+
+**Add permissions based on your needs:**
+
+<Accordion title="Outlook Permissions">
+
+- `Mail.ReadWrite` - Read and write email
+- `Mail.Send` - Send email
+- `User.Read` - Sign in and read user profile
+
+</Accordion>
+
+<Accordion title="Calendar Permissions">
+
+- `Calendars.ReadWrite` - Manage calendar events
+- `User.Read` - Sign in and read user profile
+
+</Accordion>
+
+<Accordion title="OneDrive Permissions">
+
+- `Files.ReadWrite` - Read and write files
+- `User.Read` - Sign in and read user profile
+
+</Accordion>
+
+<Accordion title="Teams Permissions">
+
+- `Chat.ReadWrite` - Read and send chat messages
+- `ChannelMessage.Send` - Send messages to channels
+- `User.Read` - Sign in and read user profile
+
+</Accordion>
+
+<Accordion title="SharePoint Permissions">
+
+- `Sites.ReadWrite.All` - Read and write site collections
+- `User.Read` - Sign in and read user profile
+
+</Accordion>
+
+5. Click **Add permissions**
+6. Permissions are granted on first user login (no admin consent needed for delegated permissions)
+
+<Note>
+`offline_access` is automatically included by Craft Agent to request refresh tokens.
+</Note>
+
+</Step>
+
+<Step title="Set Environment Variable">
+
+Add your Microsoft Client ID to your `.env` file:
+
+```bash .env
+MICROSOFT_OAUTH_CLIENT_ID=your-client-id-here
+```
+
+<Warning>
+**No client secret required!** PKCE flow uses code challenges instead of static secrets for security.
+</Warning>
+
+</Step>
+
+<Step title="Rebuild Craft Agents (if building from source)">
+
+If you're building from source:
+
+```bash
+bun install
+bun run electron:start
+```
+
+The Microsoft Client ID is baked into the build at compile time.
+
+</Step>
+
+</Steps>
+
+## OAuth Flow
+
+<Steps>
+
+<Step title="Initiate Authentication">
+
+Tell the agent:
+
+```
+Connect to my Outlook account
+```
+
+or
+
+```
+Connect to OneDrive
+```
+
+</Step>
+
+<Step title="Browser Opens">
+
+1. Microsoft login page opens
+2. **Sign in** with your Microsoft account
+3. **Choose account** (personal or work/school)
+
+</Step>
+
+<Step title="Grant Permissions">
+
+1. Review requested permissions
+2. Click **Accept** to authorize
+3. Browser redirects to callback URL
+
+</Step>
+
+<Step title="Token Exchange">
+
+1. Craft Agent receives authorization code
+2. Exchanges code for access token using PKCE verifier
+3. Tokens stored encrypted in `~/.craft-agent/credentials.enc`
+
+</Step>
+
+</Steps>
+
+## PKCE Security Flow
+
+Microsoft OAuth uses **PKCE (Proof Key for Code Exchange)** for enhanced security:
+
+1. **Generate code verifier**: Random 32-byte string (base64url encoded)
+2. **Create code challenge**: SHA-256 hash of verifier (base64url encoded)
+3. **Authorization request**: Send challenge to Microsoft
+4. **Token exchange**: Send verifier to prove you initiated the request
+
+<Note>
+PKCE eliminates the need for a client secret, making it ideal for desktop and mobile apps where secrets can't be securely stored.
+</Note>
+
+## Scopes by Service
+
+<Accordion title="Outlook Scopes">
+
+```typescript
+[
+  'https://graph.microsoft.com/Mail.ReadWrite',
+  'https://graph.microsoft.com/Mail.Send',
+  'https://graph.microsoft.com/User.Read',
+  'offline_access'
+]
+```
+
+Access email, send messages, read user profile.
+
+</Accordion>
+
+<Accordion title="Calendar Scopes">
+
+```typescript
+[
+  'https://graph.microsoft.com/Calendars.ReadWrite',
+  'https://graph.microsoft.com/User.Read',
+  'offline_access'
+]
+```
+
+Manage calendar events and appointments.
+
+</Accordion>
+
+<Accordion title="OneDrive Scopes">
+
+```typescript
+[
+  'https://graph.microsoft.com/Files.ReadWrite',
+  'https://graph.microsoft.com/User.Read',
+  'offline_access'
+]
+```
+
+Access and manage files in OneDrive.
+
+</Accordion>
+
+<Accordion title="Teams Scopes">
+
+```typescript
+[
+  'https://graph.microsoft.com/Chat.ReadWrite',
+  'https://graph.microsoft.com/ChannelMessage.Send',
+  'https://graph.microsoft.com/User.Read',
+  'offline_access'
+]
+```
+
+Send messages and access Teams chat.
+
+</Accordion>
+
+<Accordion title="SharePoint Scopes">
+
+```typescript
+[
+  'https://graph.microsoft.com/Sites.ReadWrite.All',
+  'https://graph.microsoft.com/User.Read',
+  'offline_access'
+]
+```
+
+Access SharePoint sites and documents.
+
+</Accordion>
+
+<Note>
+`offline_access` is required to receive a refresh token for long-term access.
+</Note>
+
+## Token Refresh
+
+Microsoft access tokens expire after 1 hour. Craft Agent automatically refreshes them:
+
+- **Access token lifespan**: 1 hour
+- **Refresh token lifespan**: 90 days (rolling)
+- **Automatic refresh**: Before each API call if token expired
+- **Token rotation**: Microsoft may issue new refresh tokens
+
+<Warning>
+**Refresh token expiration**: If not used for 90 days, the refresh token expires. Users must re-authenticate.
+</Warning>
+
+## Multi-Tenant Support
+
+Craft Agent uses the **common tenant endpoint**:
+
+```
+https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+```
+
+This supports:
+
+- **Personal Microsoft accounts** (Outlook.com, Hotmail, Live)
+- **Work/school accounts** (Azure AD, Microsoft 365)
+- **Multi-tenant Azure AD apps**
+
+<Note>
+For single-tenant (organization-only) apps, replace `common` with your tenant ID in Azure app configuration.
+</Note>
+
+## Source Configuration
+
+Example `config.json` for a Microsoft source:
+
+```json Outlook
+{
+  "name": "Outlook",
+  "type": "api",
+  "api": {
+    "microsoftService": "outlook"
+  }
+}
+```
+
+```json OneDrive
+{
+  "name": "OneDrive",
+  "type": "api",
+  "api": {
+    "microsoftService": "onedrive"
+  }
+}
+```
+
+```json Teams
+{
+  "name": "Microsoft Teams",
+  "type": "api",
+  "api": {
+    "microsoftService": "teams"
+  }
+}
+```
+
+## Security Best Practices
+
+- **Encrypted storage**: Tokens stored in `~/.craft-agent/credentials.enc` (AES-256-GCM)
+- **PKCE flow**: No static client secret to compromise
+- **CSRF protection**: State parameter prevents cross-site attacks
+- **Scope minimization**: Only request permissions you need
+- **Token expiration**: Access tokens expire after 1 hour
+- **Refresh token rotation**: Microsoft may rotate refresh tokens for security
+
+## Troubleshooting
+
+<Accordion title="Error: Microsoft OAuth not configured">
+
+Client ID is missing:
+
+1. Verify `MICROSOFT_OAUTH_CLIENT_ID` environment variable is set
+2. Rebuild Craft Agents after setting the env var
+3. Check `.env` file is in the project root
+
+</Accordion>
+
+<Accordion title="Error: AADSTS50011 - Redirect URI mismatch">
+
+The redirect URI doesn't match Azure app configuration:
+
+1. Go to **Authentication** in your Azure app registration
+2. Ensure **Mobile and desktop applications** platform is added
+3. Verify `http://localhost/callback` is listed
+4. Save and try again
+
+</Accordion>
+
+<Accordion title="Error: OAuth state mismatch">
+
+CSRF protection triggered:
+
+1. Check system time is correct
+2. Clear browser cache
+3. Close other OAuth flows
+4. Try again
+
+</Accordion>
+
+<Accordion title="Error: AADSTS65001 - User consent required">
+
+User hasn't consented to permissions:
+
+1. This is expected on first login
+2. Click **Accept** in the consent dialog
+3. If blocked by admin, contact your IT department
+
+</Accordion>
+
+<Accordion title="Token refresh fails">
+
+Refresh token might be expired or revoked:
+
+1. Re-authenticate to get a new refresh token
+2. Ensure `offline_access` scope is included (automatic)
+3. Check refresh token hasn't expired (90-day limit)
+4. Verify app hasn't been revoked in [Microsoft account settings](https://account.microsoft.com/privacy/app-access)
+
+</Accordion>
+
+<Accordion title="Error: Failed to get user info from Microsoft Graph">
+
+Access token doesn't have `User.Read` permission:
+
+1. Go to **API permissions** in Azure app registration
+2. Verify `User.Read` is added
+3. Re-authenticate to grant new permissions
+
+</Accordion>
+
+## Example Usage
+
+Once connected, you can interact with Microsoft services:
+
+```
+Show me my last 10 emails from Outlook
+```
+
+```
+Create a calendar event for tomorrow at 2pm: "Team Meeting"
+```
+
+```
+Upload report.pdf to my OneDrive
+```
+
+```
+List all files in my OneDrive Documents folder
+```
+
+```
+Send a Teams message to the #general channel
+```
+
+## Related Resources
+
+- [Azure Portal](https://portal.azure.com)
+- [Microsoft Graph API Documentation](https://learn.microsoft.com/en-us/graph/)
+- [Azure AD OAuth 2.0 PKCE Flow](https://learn.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-auth-code-flow)
+- [Microsoft Graph Permissions Reference](https://learn.microsoft.com/en-us/graph/permissions-reference)
+- [Manage App Access](https://account.microsoft.com/privacy/app-access)

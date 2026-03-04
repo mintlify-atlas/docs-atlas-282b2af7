@@ -1,0 +1,196 @@
+---
+title: "Development Setup"
+description: "Get your local development environment ready for contributing to Craft Agents"
+---
+
+<Note>
+Craft Agents is built with agent-native principles in mind. The development setup is straightforward and gets you running in minutes.
+</Note>
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- [Bun](https://bun.sh/) runtime (required)
+- Node.js 18+ (for some tooling)
+- Git
+- macOS, Linux, or Windows
+
+## Clone the Repository
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/lukilabs/craft-agents-oss.git
+    cd craft-agents-oss
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Install all project dependencies using Bun:
+    ```bash
+    bun install
+    ```
+    
+    This installs dependencies for all workspaces in the monorepo including:
+    - `packages/core` - Shared types
+    - `packages/shared` - Business logic
+    - `packages/ui` - React components
+    - `apps/electron` - Desktop application
+  </Step>
+
+  <Step title="Configure environment variables">
+    OAuth integrations (Slack, Microsoft) require credentials baked into the build. Create a `.env` file in the project root:
+    
+    ```bash
+    cp .env.example .env
+    ```
+    
+    Edit the `.env` file with your credentials:
+    
+    ```bash .env
+    MICROSOFT_OAUTH_CLIENT_ID=your-client-id
+    SLACK_OAUTH_CLIENT_ID=your-slack-client-id
+    SLACK_OAUTH_CLIENT_SECRET=your-slack-client-secret
+    ```
+    
+    <Warning>
+    Never commit your `.env` file to version control. It's already included in `.gitignore`.
+    </Warning>
+  </Step>
+
+  <Step title="Start development mode">
+    Launch the Electron app in hot reload development mode:
+    
+    <CodeGroup>
+    ```bash Standard Development
+    bun run electron:dev
+    ```
+    
+    ```bash With Terminal Output
+    bun run electron:dev:terminal
+    ```
+    
+    ```bash Alternative Menu Script
+    bun run electron:dev:menu
+    ```
+    </CodeGroup>
+    
+    The app will launch with:
+    - Hot module replacement for the renderer process
+    - Automatic restart on main process changes
+    - Debug logging enabled by default
+  </Step>
+</Steps>
+
+## Google OAuth Setup (Optional)
+
+<Note>
+Google OAuth credentials are NOT baked into the build. Users provide their own credentials via source configuration.
+</Note>
+
+If you're working on Google integrations (Gmail, Calendar, Drive), you'll need to set up OAuth credentials:
+
+<Steps>
+  <Step title="Create a Google Cloud Project">
+    1. Go to [Google Cloud Console](https://console.cloud.google.com)
+    2. Create a new project or select an existing one
+    3. Note your Project ID
+  </Step>
+
+  <Step title="Enable Required APIs">
+    Navigate to **APIs & Services → Library** and enable:
+    - Gmail API (for email integration)
+    - Google Calendar API (for calendar integration)
+    - Google Drive API (for file storage)
+  </Step>
+
+  <Step title="Configure OAuth Consent Screen">
+    1. Go to **APIs & Services → OAuth consent screen**
+    2. Select **External** user type (unless you have Google Workspace)
+    3. Fill in required fields:
+       - App name: e.g., "My Craft Agent Dev"
+       - User support email: your email
+       - Developer contact: your email
+    4. Add yourself as a test user
+  </Step>
+
+  <Step title="Create OAuth Credentials">
+    1. Go to **APIs & Services → Credentials**
+    2. Click **Create Credentials → OAuth Client ID**
+    3. Application type: **Desktop app**
+    4. Name: e.g., "Craft Agent Desktop Dev"
+    5. Save the **Client ID** and **Client Secret**
+  </Step>
+</Steps>
+
+## Project Structure
+
+Understanding the codebase architecture:
+
+```
+craft-agent/
+├── apps/
+│   └── electron/              # Desktop GUI (primary)
+│       └── src/
+│           ├── main/          # Electron main process
+│           ├── preload/       # Context bridge
+│           └── renderer/      # React UI (Vite + shadcn)
+└── packages/
+    ├── core/                  # @craft-agent/core - Shared types
+    ├── shared/                # @craft-agent/shared - Business logic
+    │   └── src/
+    │       ├── agent/         # CraftAgent, permissions
+    │       ├── auth/          # OAuth, tokens
+    │       ├── config/        # Storage, preferences, themes
+    │       ├── credentials/   # AES-256-GCM encrypted storage
+    │       ├── sessions/      # Session persistence
+    │       ├── sources/       # MCP, API, local sources
+    │       └── statuses/      # Dynamic status system
+    └── ui/                    # @craft-agent/ui - React components
+```
+
+## Development Commands
+
+<CodeGroup>
+```bash Type Checking
+bun run typecheck:all
+```
+
+```bash Linting
+bun run lint
+```
+
+```bash Build for Production
+bun run electron:build
+```
+
+```bash Clean Build Artifacts
+bun run electron:clean
+```
+</CodeGroup>
+
+## Debug Logging
+
+Logs are automatically enabled in development mode and written to:
+
+- **macOS:** `~/Library/Logs/@craft-agent/electron/main.log`
+- **Windows:** `%APPDATA%\@craft-agent\electron\logs\main.log`
+- **Linux:** `~/.config/@craft-agent/electron/logs/main.log`
+
+To tail logs in real-time (macOS):
+
+```bash
+bun run electron:dev:logs
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building" icon="hammer" href="/development/contributing/building">
+    Learn how to build Craft Agents for production
+  </Card>
+  <Card title="Guidelines" icon="book" href="/development/contributing/guidelines">
+    Review contribution guidelines and best practices
+  </Card>
+</CardGroup>

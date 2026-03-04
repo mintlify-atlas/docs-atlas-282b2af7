@@ -1,0 +1,397 @@
+---
+title: Theme Customization
+description: Create and customize themes to personalize your Craft Agent experience
+---
+
+Craft Agent's theme system allows you to fully customize the visual appearance of the application through JSON configuration files.
+
+## Creating a Custom Theme
+
+Themes are defined in `~/.craft-agent/theme.json` as JSON objects with color properties.
+
+### Basic Theme Structure
+
+At minimum, a theme should define at least one color property:
+
+```json theme.json
+{
+  "background": "#faf9fb",
+  "foreground": "#26242a",
+  "accent": "#8b5cf6"
+}
+```
+
+### Complete Theme Example
+
+Here's a complete theme with all semantic and surface colors:
+
+```json theme.json
+{
+  "background": "oklch(0.98 0.003 265)",
+  "foreground": "oklch(0.185 0.01 270)",
+  "accent": "oklch(0.58 0.22 293)",
+  "info": "oklch(0.75 0.16 70)",
+  "success": "oklch(0.55 0.17 145)",
+  "destructive": "oklch(0.58 0.24 28)",
+  "paper": "oklch(0.99 0.002 265)",
+  "navigator": "oklch(0.97 0.004 265)",
+  "input": "oklch(0.96 0.005 265)",
+  "popover": "oklch(1.0 0 0)",
+  "dark": {
+    "background": "oklch(0.145 0.015 270)",
+    "foreground": "oklch(0.95 0.01 270)",
+    "accent": "oklch(0.65 0.22 293)",
+    "info": "oklch(0.78 0.14 70)",
+    "success": "oklch(0.60 0.17 145)",
+    "destructive": "oklch(0.65 0.22 28)",
+    "paper": "oklch(0.16 0.012 270)",
+    "navigator": "oklch(0.13 0.018 270)"
+  }
+}
+```
+
+## Dark Mode Configuration
+
+Dark mode is configured using the optional `dark` object, which overrides light mode colors when the system is in dark mode.
+
+### Full Dark Mode Override
+
+Define all colors in both light and dark mode:
+
+```json theme.json
+{
+  "background": "#ffffff",
+  "foreground": "#000000",
+  "accent": "#8b5cf6",
+  "dark": {
+    "background": "#1a1a1a",
+    "foreground": "#e0e0e0",
+    "accent": "#a78bfa"
+  }
+}
+```
+
+### Partial Dark Mode Override
+
+You can override only specific colors in dark mode:
+
+```json theme.json
+{
+  "background": "oklch(0.98 0.003 265)",
+  "foreground": "oklch(0.185 0.01 270)",
+  "accent": "oklch(0.58 0.22 293)",
+  "info": "oklch(0.75 0.16 70)",
+  "dark": {
+    "background": "oklch(0.145 0.015 270)",
+    "foreground": "oklch(0.95 0.01 270)"
+    // accent and info will use light mode values
+  }
+}
+```
+
+## Scenic Mode Themes
+
+Scenic mode enables full-window background images with glass panel effects.
+
+### Remote Image URL
+
+```json theme.json
+{
+  "mode": "scenic",
+  "backgroundImage": "https://example.com/backgrounds/mountain.jpg",
+  "background": "rgba(250, 249, 251, 0.95)",
+  "paper": "rgba(255, 255, 255, 0.7)",
+  "navigator": "rgba(247, 246, 248, 0.8)",
+  "popoverSolid": "#faf9fb",
+  "accent": "oklch(0.58 0.22 293)"
+}
+```
+
+### Data URL (Base64)
+
+For local images, use base64 data URLs:
+
+```json theme.json
+{
+  "mode": "scenic",
+  "backgroundImage": "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
+  "paper": "rgba(250, 249, 251, 0.9)",
+  "popoverSolid": "#faf9fb"
+}
+```
+
+<Note>
+  **Important:** When using scenic mode, always define `popoverSolid` as a fully opaque color to ensure dropdowns and modals render correctly.
+</Note>
+
+## CSS Variable Generation
+
+Craft Agent converts theme configurations into CSS variables using the `themeToCSS()` function.
+
+### How It Works
+
+```typescript packages/shared/src/config/theme.ts
+import { themeToCSS, type ThemeOverrides } from '@craft-agent/shared/config'
+
+const theme: ThemeOverrides = {
+  background: 'oklch(0.98 0.003 265)',
+  foreground: 'oklch(0.185 0.01 270)',
+  accent: '#8b5cf6',
+  dark: {
+    background: 'oklch(0.145 0.015 270)',
+    foreground: 'oklch(0.95 0.01 270)'
+  }
+}
+
+// Generate CSS for light mode
+const lightCSS = themeToCSS(theme, false)
+// Output:
+// --background: oklch(0.98 0.003 265);
+// --foreground: oklch(0.185 0.01 270);
+// --accent: #8b5cf6;
+// --accent-rgb: 97, 64, 172;
+
+// Generate CSS for dark mode
+const darkCSS = themeToCSS(theme, true)
+// Output:
+// --background: oklch(0.145 0.015 270);
+// --foreground: oklch(0.95 0.01 270);
+// --accent: #8b5cf6;
+```
+
+### RGB Value Generation
+
+`themeToCSS()` automatically generates RGB values for hex colors, which are used for shadow effects:
+
+- **`--foreground-rgb`**: RGB values of foreground color for shadow borders
+- **`--accent-rgb`**: Darkened RGB values (70% brightness) for shadow-tinted effects
+
+<CodeGroup>
+```typescript Input
+const theme = {
+  foreground: '#8b5cf6',
+  accent: '#8b5cf6'
+}
+```
+
+```css Output
+--foreground: #8b5cf6;
+--foreground-rgb: 139, 92, 246;
+--accent: #8b5cf6;
+--accent-rgb: 97, 64, 172;  /* 70% brightness */
+```
+</CodeGroup>
+
+## Surface Color Fallbacks
+
+Surface colors automatically fall back to `background` if not explicitly defined:
+
+```typescript
+// If only background is defined
+const theme = {
+  background: 'oklch(0.98 0.003 265)'
+}
+
+// All surface colors fall back to background:
+// --paper: oklch(0.98 0.003 265);
+// --navigator: oklch(0.98 0.003 265);
+// --input: oklch(0.98 0.003 265);
+// --popover: oklch(0.98 0.003 265);
+```
+
+This allows for minimal theme definitions while ensuring all UI regions have valid colors.
+
+## Preset Themes
+
+Preset themes are stored in `~/.craft-agent/themes/` and include additional metadata:
+
+```json ~/.craft-agent/themes/dracula.json
+{
+  "name": "Dracula",
+  "description": "Dark theme with vibrant colors",
+  "author": "Dracula Theme",
+  "license": "MIT",
+  "supportedModes": ["dark"],
+  "background": "#282a36",
+  "foreground": "#f8f8f2",
+  "accent": "#bd93f9",
+  "info": "#f1fa8c",
+  "success": "#50fa7b",
+  "destructive": "#ff5555",
+  "shikiTheme": {
+    "dark": "dracula"
+  }
+}
+```
+
+### Preset Theme Properties
+
+<ParamField path="name" type="string">
+  Display name of the theme
+</ParamField>
+
+<ParamField path="description" type="string">
+  Short description of the theme's appearance
+</ParamField>
+
+<ParamField path="author" type="string">
+  Theme creator or maintainer
+</ParamField>
+
+<ParamField path="license" type="string">
+  License identifier (e.g., "MIT", "Apache-2.0")
+</ParamField>
+
+<ParamField path="supportedModes" type="array">
+  Array of `'light'` and/or `'dark'` indicating which modes the theme supports
+</ParamField>
+
+<ParamField path="shikiTheme" type="object">
+  Syntax highlighting theme configuration:
+  - `light`: Shiki theme name for light mode
+  - `dark`: Shiki theme name for dark mode
+</ParamField>
+
+## Theme Resolution
+
+Craft Agent resolves themes using the `resolveTheme()` function, which merges app-level overrides:
+
+```typescript packages/shared/src/config/theme.ts
+import { resolveTheme } from '@craft-agent/shared/config'
+
+// App-level theme override
+const appTheme = {
+  accent: '#ff0000',
+  paper: 'oklch(0.99 0.002 265)'
+}
+
+// Resolve final theme
+const finalTheme = resolveTheme(appTheme)
+// Result: Merges appTheme with defaults
+```
+
+## Syntax Highlighting Themes
+
+Craft Agent uses [Shiki](https://shiki.style/) for syntax highlighting. Themes can specify which Shiki theme to use:
+
+```json theme.json
+{
+  "background": "#ffffff",
+  "foreground": "#000000",
+  "accent": "#8b5cf6",
+  "shikiTheme": {
+    "light": "github-light",
+    "dark": "github-dark"
+  }
+}
+```
+
+If not specified, Craft Agent uses the default Shiki themes:
+- Light mode: `github-light`
+- Dark mode: `github-dark`
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use OKLCH" icon="palette">
+    OKLCH provides perceptually uniform colors and better color mixing in CSS
+  </Card>
+  <Card title="Define Dark Mode" icon="moon">
+    Always provide dark mode overrides for a complete experience
+  </Card>
+  <Card title="Test Contrast" icon="eye">
+    Ensure sufficient contrast between foreground and background colors
+  </Card>
+  <Card title="Opaque Popovers" icon="window">
+    Use solid colors for `popoverSolid` in scenic mode themes
+  </Card>
+</CardGroup>
+
+## Validation
+
+Craft Agent validates theme files to ensure they contain valid color values and required properties:
+
+```typescript
+import { validateThemeContent } from '@craft-agent/shared/config'
+
+const themeJSON = JSON.stringify({
+  background: 'oklch(0.98 0.003 265)',
+  foreground: 'oklch(0.185 0.01 270)'
+})
+
+const result = validateThemeContent(themeJSON, 'my-theme.json')
+if (!result.valid) {
+  console.error('Validation errors:', result.errors)
+}
+```
+
+### Validation Rules
+
+- **At least one color required**: Theme must define at least one semantic color
+- **Valid CSS colors**: All color values must be valid CSS color formats
+- **Dark mode structure**: If present, `dark` object must have valid color properties
+- **Scenic mode requirements**: If `mode` is `scenic`, `backgroundImage` should be provided
+
+## Examples
+
+### Minimal Theme
+
+```json theme.json
+{
+  "accent": "#8b5cf6"
+}
+```
+
+This minimal theme only overrides the accent color, using defaults for everything else.
+
+### High Contrast Theme
+
+```json theme.json
+{
+  "background": "#000000",
+  "foreground": "#ffffff",
+  "accent": "#00ff00",
+  "info": "#ffff00",
+  "success": "#00ff00",
+  "destructive": "#ff0000",
+  "dark": {
+    "background": "#000000",
+    "foreground": "#ffffff"
+  }
+}
+```
+
+### Themed Scenic Mode
+
+```json theme.json
+{
+  "mode": "scenic",
+  "backgroundImage": "https://images.unsplash.com/photo-1506905925346-21bda4d32df4",
+  "background": "rgba(255, 255, 255, 0.85)",
+  "foreground": "#1a1a1a",
+  "accent": "#8b5cf6",
+  "paper": "rgba(255, 255, 255, 0.7)",
+  "navigator": "rgba(250, 249, 251, 0.9)",
+  "popover": "rgba(255, 255, 255, 0.95)",
+  "popoverSolid": "#ffffff",
+  "dark": {
+    "background": "rgba(26, 26, 26, 0.85)",
+    "foreground": "#e0e0e0",
+    "paper": "rgba(30, 30, 30, 0.8)",
+    "navigator": "rgba(20, 20, 20, 0.9)",
+    "popover": "rgba(26, 26, 26, 0.95)",
+    "popoverSolid": "#1a1a1a"
+  }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Theme Overview" icon="book" href="/features/themes/overview">
+    Learn about the theme system architecture
+  </Card>
+  <Card title="Configuration API" icon="gear" href="/development/reference/configuration">
+    Explore configuration management APIs
+  </Card>
+</CardGroup>

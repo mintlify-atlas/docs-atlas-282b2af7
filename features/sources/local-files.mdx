@@ -1,0 +1,511 @@
+---
+title: 'Local Files'
+description: 'Connect local filesystems, Obsidian vaults, and Git repositories'
+icon: 'folder'
+---
+
+## What are Local Sources?
+
+Local sources provide direct access to files and directories on your filesystem. They're useful for:
+
+- **Knowledge bases** - Obsidian vaults, Notion exports, markdown notes
+- **Code repositories** - Git repos for code analysis and documentation
+- **Data files** - SQLite databases, CSV files, configuration files
+- **Personal archives** - Document collections, research papers, photos
+
+<Note>
+  Local sources don't require network connectivity or authentication. They access files directly from your machine.
+</Note>
+
+## Configuration
+
+Local sources use the `local` type with a filesystem path:
+
+```json
+{
+  "id": "notes_abc123",
+  "name": "My Notes",
+  "slug": "my-notes",
+  "enabled": true,
+  "provider": "obsidian",
+  "type": "local",
+  "local": {
+    "path": "~/Documents/Obsidian Vault",
+    "format": "obsidian"
+  },
+  "tagline": "Personal knowledge base with meeting notes and project docs"
+}
+```
+
+### Path Handling
+
+Paths support Unix-style expansion:
+
+- **Home directory**: `~/Documents` → `/Users/you/Documents`
+- **Absolute paths**: `/data/repos/myproject`
+- **Relative paths**: Not supported (must be absolute or use `~`)
+
+<Accordion title="Portable Path Storage">
+  Paths are stored in portable format in `config.json`:
+  ```json
+  "path": "~/Documents/Obsidian Vault"
+  ```
+  
+  On load, expanded to absolute path:
+  ```
+  /Users/you/Documents/Obsidian Vault
+  ```
+  
+  This allows config files to be shared across machines or backed up without hardcoded paths.
+</Accordion>
+
+### Format Hints
+
+The optional `format` field helps agents understand the source structure:
+
+| Format | Description | Tools/Behavior |
+|--------|-------------|----------------|
+| `filesystem` | Generic file/folder access | Basic file operations |
+| `obsidian` | Obsidian vault with wikilinks | Parse markdown, follow links |
+| `git` | Git repository | Access commit history, branches |
+| `sqlite` | SQLite database file | SQL queries |
+
+<Note>
+  The format hint is advisory - it doesn't change which MCP server is used, but helps agents understand how to query the data.
+</Note>
+
+## Common Use Cases
+
+### Obsidian Vaults
+
+Connect your Obsidian vault to let agents search notes, answer questions, and create new notes:
+
+```json
+{
+  "name": "Obsidian Vault",
+  "provider": "obsidian",
+  "type": "local",
+  "local": {
+    "path": "~/Documents/Obsidian",
+    "format": "obsidian"
+  },
+  "icon": "📝"
+}
+```
+
+<Accordion title="What agents can do with Obsidian vaults">
+  - Search notes by content, tags, or frontmatter
+  - Follow wikilinks between notes
+  - Create new notes with proper formatting
+  - Update existing notes (append, prepend, edit sections)
+  - Extract information from daily notes
+  - Summarize meeting notes or project status
+</Accordion>
+
+### Git Repositories
+
+Provide access to local Git repos for code analysis:
+
+```json
+{
+  "name": "MyProject",
+  "provider": "git",
+  "type": "local",
+  "local": {
+    "path": "~/code/myproject",
+    "format": "git"
+  },
+  "icon": "📦",
+  "tagline": "Main application repository"
+}
+```
+
+<Accordion title="What agents can do with Git repos">
+  - Read source files and documentation
+  - Search code for patterns or functions
+  - Analyze project structure
+  - Review recent commits
+  - Check git status and branches
+  - Generate documentation from code
+  
+  <Warning>
+    Agents **cannot** modify git history or push changes. File modifications are possible if write permissions allow, but git operations are read-only.
+  </Warning>
+</Accordion>
+
+### SQLite Databases
+
+Query local databases directly:
+
+```json
+{
+  "name": "App Database",
+  "provider": "sqlite",
+  "type": "local",
+  "local": {
+    "path": "~/data/app.db",
+    "format": "sqlite"
+  },
+  "icon": "🗄️"
+}
+```
+
+### Document Collections
+
+Index folders of PDFs, Word docs, or other files:
+
+```json
+{
+  "name": "Research Papers",
+  "provider": "filesystem",
+  "type": "local",
+  "local": {
+    "path": "~/Documents/Research",
+    "format": "filesystem"
+  },
+  "icon": "📚"
+}
+```
+
+## MCP Server Integration
+
+Local sources are typically accessed via MCP servers:
+
+### Filesystem MCP Server
+
+The official filesystem MCP server provides file operations:
+
+```json
+{
+  "name": "Project Docs",
+  "type": "mcp",
+  "mcp": {
+    "transport": "stdio",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@modelcontextprotocol/server-filesystem",
+      "~/Documents/Project"
+    ]
+  }
+}
+```
+
+Available tools:
+- `read_file` - Read file contents
+- `write_file` - Write or create files
+- `list_directory` - List directory contents
+- `search_files` - Search for files by pattern
+- `get_file_info` - Get file metadata
+
+### Custom MCP Servers
+
+Build specialized MCP servers for your data format:
+
+```typescript
+// server.ts
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+
+const server = new Server({
+  name: 'obsidian-server',
+  version: '1.0.0'
+});
+
+// Add tools for Obsidian-specific operations
+server.tool(
+  'search_notes',
+  'Search Obsidian notes by content or tags',
+  { query: z.string(), tags: z.array(z.string()).optional() },
+  async (args) => {
+    // Search implementation
+    const results = await searchVault(args.query, args.tags);
+    return { content: [{ type: 'text', text: JSON.stringify(results) }] };
+  }
+);
+
+const transport = new StdioServerTransport();
+await server.connect(transport);
+```
+
+Configure as local source:
+
+```json
+{
+  "name": "Obsidian",
+  "type": "mcp",
+  "mcp": {
+    "transport": "stdio",
+    "command": "node",
+    "args": ["./obsidian-server/dist/server.js"],
+    "env": {
+      "VAULT_PATH": "~/Documents/Obsidian"
+    }
+  }
+}
+```
+
+<Note>
+  Stdio MCP servers run as subprocesses with filtered environment variables. Sensitive credentials (`ANTHROPIC_API_KEY`, `AWS_ACCESS_KEY_ID`, etc.) are automatically excluded.
+</Note>
+
+## Security Considerations
+
+<Warning>
+  Local sources have **direct filesystem access**. Agents can read and potentially modify files based on their permission mode.
+</Warning>
+
+### Permission Modes
+
+Control what agents can do with local files:
+
+| Mode | File Operations |
+|------|----------------|
+| **Explore** | Read-only access |
+| **Ask to Edit** | Prompts before file modifications |
+| **Auto** | Full read/write access |
+
+See [Permission Modes](/features/permission-modes) for details.
+
+### Path Restrictions
+
+Restrict write access to specific directories using permissions config:
+
+```json
+// ~/.craft-agent/workspaces/{id}/permissions.json
+{
+  "allowedWritePaths": [
+    "~/Documents/Obsidian/*",
+    "~/code/myproject/docs/*"
+  ]
+}
+```
+
+<Accordion title="How path restrictions work">
+  - Glob patterns match allowed directories
+  - Write operations outside these paths are blocked
+  - Read operations are not restricted
+  - Applies to all local sources in the workspace
+</Accordion>
+
+### Sensitive Files
+
+Exclude sensitive files from agent access:
+
+```markdown
+# guide.md
+
+## Scope
+Project documentation and meeting notes
+
+## Guidelines
+- Do NOT access files in .env or credentials/ folders
+- Focus on markdown files in docs/ and notes/
+- Ask before modifying any configuration files
+```
+
+## Creating Local Sources
+
+<Steps>
+  <Step title="Choose Directory">
+    Identify the filesystem path to expose:
+    ```bash
+    ls ~/Documents/Obsidian
+    # Verify path exists and is accessible
+    ```
+  </Step>
+  
+  <Step title="Create Source Config">
+    ```typescript
+    import { createSource } from '@craft-agent/shared/sources';
+    
+    await createSource(workspaceRootPath, {
+      name: 'Obsidian Vault',
+      provider: 'obsidian',
+      type: 'local',
+      local: {
+        path: '~/Documents/Obsidian',
+        format: 'obsidian'
+      },
+      icon: '📝',
+      enabled: true
+    });
+    ```
+  </Step>
+  
+  <Step title="Add MCP Server (Optional)">
+    If using a custom MCP server, configure it separately:
+    ```typescript
+    await createSource(workspaceRootPath, {
+      name: 'Obsidian MCP',
+      provider: 'obsidian',
+      type: 'mcp',
+      mcp: {
+        transport: 'stdio',
+        command: 'node',
+        args: ['./server.js'],
+        env: { VAULT_PATH: '~/Documents/Obsidian' }
+      }
+    });
+    ```
+  </Step>
+  
+  <Step title="Document in guide.md">
+    Provide context about the data structure:
+    ```markdown
+    # Obsidian Vault
+    
+    ## Scope
+    Personal knowledge base with meeting notes, project docs, and research
+    
+    ## Guidelines
+    - Daily notes are in Daily/ folder with YYYY-MM-DD format
+    - Project docs use [[wikilinks]] for cross-references
+    - Meeting notes tagged with #meeting
+    
+    ## Context
+    This vault contains 3 years of notes (2021-2024)
+    Key areas: work projects, personal learning, book summaries
+    ```
+  </Step>
+</Steps>
+
+## Limitations
+
+<AccordionGroup>
+  <Accordion title="No network access" icon="wifi-slash">
+    Local sources cannot fetch remote content or sync with cloud services. Use API sources or MCP sources for network-based data.
+  </Accordion>
+  
+  <Accordion title="Performance considerations" icon="gauge">
+    Large directories (1000+ files) may be slow to index. Consider using MCP servers with caching for better performance.
+  </Accordion>
+  
+  <Accordion title="Platform-specific paths" icon="desktop">
+    Paths must exist on the machine running Craft Agents. Cross-platform config sharing requires portable paths (`~/`) or manual adjustment.
+  </Accordion>
+  
+  <Accordion title="No authentication" icon="unlock">
+    Local sources don't support authentication. Any process with filesystem access can read the files.
+  </Accordion>
+</AccordionGroup>
+
+## Example Configurations
+
+<CodeGroup>
+```json Obsidian Vault
+{
+  "id": "obsidian_vault",
+  "name": "Obsidian Vault",
+  "slug": "obsidian-vault",
+  "enabled": true,
+  "provider": "obsidian",
+  "type": "local",
+  "local": {
+    "path": "~/Documents/Obsidian",
+    "format": "obsidian"
+  },
+  "icon": "📝",
+  "tagline": "Personal knowledge base with 3 years of notes"
+}
+```
+
+```json Git Repository
+{
+  "id": "myproject_repo",
+  "name": "MyProject Repo",
+  "slug": "myproject-repo",
+  "enabled": true,
+  "provider": "git",
+  "type": "local",
+  "local": {
+    "path": "~/code/myproject",
+    "format": "git"
+  },
+  "icon": "📦",
+  "tagline": "Main application codebase (TypeScript + React)"
+}
+```
+
+```json SQLite Database
+{
+  "id": "app_database",
+  "name": "App Database",
+  "slug": "app-database",
+  "enabled": true,
+  "provider": "sqlite",
+  "type": "local",
+  "local": {
+    "path": "~/data/app.db",
+    "format": "sqlite"
+  },
+  "icon": "🗄️",
+  "tagline": "Application database with user and transaction data"
+}
+```
+
+```json Document Folder
+{
+  "id": "research_papers",
+  "name": "Research Papers",
+  "slug": "research-papers",
+  "enabled": true,
+  "provider": "filesystem",
+  "type": "local",
+  "local": {
+    "path": "~/Documents/Research",
+    "format": "filesystem"
+  },
+  "icon": "📚",
+  "tagline": "Collection of ML research papers and notes"
+}
+```
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use descriptive taglines" icon="quote">
+    Help agents understand what's in the source:
+    ```json
+    "tagline": "Engineering team meeting notes (2023-2024) with action items"
+    ```
+  </Accordion>
+  
+  <Accordion title="Set appropriate format hints" icon="tag">
+    Use the correct format to help agents query effectively:
+    - `obsidian` for Obsidian vaults
+    - `git` for repositories
+    - `sqlite` for databases
+    - `filesystem` for generic folders
+  </Accordion>
+  
+  <Accordion title="Document structure in guide.md" icon="book">
+    Explain the organization:
+    ```markdown
+    ## Scope
+    - Daily/ - Daily notes (YYYY-MM-DD.md)
+    - Projects/ - Project documentation
+    - Archive/ - Old notes (2020-2021)
+    ```
+  </Accordion>
+  
+  <Accordion title="Use permission restrictions" icon="shield">
+    Limit write access to prevent accidental modifications:
+    ```json
+    "allowedWritePaths": ["~/Documents/Obsidian/Daily/*"]
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Permission Modes" icon="shield-check" href="/features/permission-modes">
+    Control file access with permission modes
+  </Card>
+  
+  <Card title="Sources Overview" icon="layer-group" href="/features/sources/overview">
+    Learn about other source types
+  </Card>
+</CardGroup>

@@ -1,0 +1,279 @@
+---
+title: "Building"
+description: "Build Craft Agents for production and create platform-specific distributions"
+---
+
+<Note>
+Craft Agents uses esbuild for the main and preload processes, and Vite for the renderer process. All build scripts are managed through Bun.
+</Note>
+
+## Build Commands Overview
+
+The build process is split into several stages for flexibility:
+
+<CodeGroup>
+```bash Full Build
+bun run electron:build
+```
+
+```bash Build and Run
+bun run electron:start
+```
+
+```bash Clean Build Artifacts
+bun run electron:clean
+```
+</CodeGroup>
+
+## Build Process Breakdown
+
+<Steps>
+  <Step title="Main Process">
+    Build the Electron main process using esbuild:
+    
+    ```bash
+    bun run electron:build:main
+    ```
+    
+    This compiles the main process TypeScript code from `apps/electron/src/main/` into optimized JavaScript.
+  </Step>
+
+  <Step title="Preload Scripts">
+    Build the context bridge preload scripts:
+    
+    ```bash
+    bun run electron:build:preload
+    ```
+    
+    Compiles the preload scripts that expose secure APIs to the renderer process.
+  </Step>
+
+  <Step title="Renderer Process">
+    Build the React UI using Vite:
+    
+    ```bash
+    bun run electron:build:renderer
+    ```
+    
+    Bundles the renderer process with all React components, shadcn/ui, and Tailwind CSS v4.
+  </Step>
+
+  <Step title="Resources and Assets">
+    Copy additional resources and assets:
+    
+    <CodeGroup>
+    ```bash Resources
+    bun run electron:build:resources
+    ```
+    
+    ```bash Assets
+    bun run electron:build:assets
+    ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Creating Distributions
+
+Use `electron-builder` to create platform-specific installers and packages.
+
+### All Platforms
+
+```bash
+bun run electron:dist
+```
+
+This builds for your current platform using the configuration in `electron-builder.yml`.
+
+### Platform-Specific Builds
+
+<CodeGroup>
+```bash macOS
+bun run electron:dist:mac
+```
+
+```bash Windows
+bun run electron:dist:win
+```
+
+```bash Linux
+bun run electron:dist:linux
+```
+</CodeGroup>
+
+<Warning>
+Cross-platform builds may require additional setup. For example, building for Windows on macOS requires Wine.
+</Warning>
+
+## Build Output
+
+Built distributions are created in the project root:
+
+```
+craft-agents-oss/
+├── dist/                      # electron-builder output
+│   ├── mac/                   # macOS builds
+│   │   └── Craft Agents.app
+│   ├── win/                   # Windows builds
+│   │   └── Craft Agents.exe
+│   └── linux/                 # Linux builds
+│       └── craft-agents
+└── apps/electron/
+    └── dist/                  # Intermediate build artifacts
+        ├── main/
+        ├── preload/
+        └── renderer/
+```
+
+## Development vs Production
+
+### Development Build
+
+```bash
+bun run electron:dev
+```
+
+Features:
+- Hot module replacement (HMR)
+- Source maps enabled
+- Debug logging on by default
+- React DevTools integration
+- Unminified code for debugging
+
+### Production Build
+
+```bash
+bun run electron:build
+```
+
+Features:
+- Minified and optimized code
+- Tree-shaking to reduce bundle size
+- Production React build (no dev warnings)
+- Source maps optional
+- Environment-specific optimizations
+
+## Type Checking
+
+Always run type checks before building for distribution:
+
+<CodeGroup>
+```bash All Packages
+bun run typecheck:all
+```
+
+```bash Shared Package Only
+bun run typecheck
+```
+</CodeGroup>
+
+This checks:
+- `packages/core` - Type definitions
+- `packages/shared` - Business logic
+- `packages/session-tools-core` - Session tools
+
+<Note>
+Type checking runs separately from the build process. Always verify types before creating distributions.
+</Note>
+
+## Linting
+
+Ensure code quality before building:
+
+<CodeGroup>
+```bash All Packages
+bun run lint
+```
+
+```bash Individual Packages
+bun run lint:electron
+bun run lint:shared
+bun run lint:ui
+```
+</CodeGroup>
+
+## Additional Build Scripts
+
+### Playground Development
+
+Test UI components in isolation:
+
+```bash
+bun run playground:dev
+```
+
+Opens a development playground at `http://localhost:5173/playground.html`.
+
+### Release Script
+
+Automated release process:
+
+```bash
+bun run release
+```
+
+<Warning>
+This script is typically used by maintainers for official releases. It may modify version numbers and create git tags.
+</Warning>
+
+## Build Configuration
+
+The Electron Builder configuration is defined in `electron-builder.yml` at the project root:
+
+```yaml electron-builder.yml
+appId: do.craft.agents
+productName: Craft Agents
+directories:
+  buildResources: apps/electron/build
+  output: dist
+files:
+  - apps/electron/dist/**/*
+  - packages/**/dist/**/*
+```
+
+## Troubleshooting
+
+### Build Fails with Type Errors
+
+Run type checking first to identify issues:
+
+```bash
+bun run typecheck:all
+```
+
+### Missing Dependencies
+
+Reinstall dependencies:
+
+```bash
+rm -rf node_modules
+bun install
+```
+
+### Stale Build Cache
+
+Clean all build artifacts:
+
+```bash
+bun run electron:clean
+bun run electron:build
+```
+
+### Platform-Specific Build Issues
+
+Make sure you have the required platform tools:
+
+- **macOS**: Xcode Command Line Tools
+- **Windows**: Visual Studio Build Tools or Visual Studio
+- **Linux**: Standard build tools (`build-essential` on Debian/Ubuntu)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Setup" icon="wrench" href="/development/contributing/setup">
+    Review development environment setup
+  </Card>
+  <Card title="Guidelines" icon="book" href="/development/contributing/guidelines">
+    Learn contribution guidelines and best practices
+  </Card>
+</CardGroup>

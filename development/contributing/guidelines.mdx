@@ -1,0 +1,324 @@
+---
+title: "Contribution Guidelines"
+description: "Best practices, code standards, and the contribution process for Craft Agents"
+---
+
+<Note>
+We welcome contributions from everyone! This guide will help you understand our development workflow and standards.
+</Note>
+
+## Code of Conduct
+
+### Our Pledge
+
+We are committed to providing a welcoming and inclusive environment for everyone. All participants are expected to uphold these standards.
+
+### Our Standards
+
+We expect all participants to:
+
+- **Be respectful and considerate** in all interactions
+- **Welcome newcomers** and help them learn the codebase
+- **Accept constructive feedback** gracefully
+- **Focus on what is best** for the community and project
+
+### Enforcement
+
+Instances of unacceptable behavior may be reported to: **conduct@craft.do**
+
+All complaints will be reviewed and investigated promptly and fairly.
+
+<Note>
+This Code of Conduct is adapted from the [Contributor Covenant](https://www.contributor-covenant.org/), version 2.1.
+</Note>
+
+## Getting Started
+
+Before you begin contributing:
+
+<Steps>
+  <Step title="Fork and clone the repository">
+    ```bash
+    git clone https://github.com/YOUR-USERNAME/craft-agents-oss.git
+    cd craft-agents-oss
+    ```
+  </Step>
+
+  <Step title="Create a feature branch">
+    Use descriptive branch names that follow our naming conventions:
+    
+    ```bash
+    git checkout -b feature/add-new-tool
+    ```
+  </Step>
+
+  <Step title="Make your changes">
+    Follow our code style and development practices outlined below.
+  </Step>
+
+  <Step title="Test your changes">
+    Run type checks and ensure the app works:
+    
+    ```bash
+    bun run typecheck:all
+    bun run electron:dev
+    ```
+  </Step>
+</Steps>
+
+## Branch Naming Conventions
+
+Use clear, descriptive branch names that indicate the type and purpose of changes:
+
+| Prefix | Purpose | Example |
+|--------|---------|--------|
+| `feature/` | New features | `feature/add-new-tool` |
+| `fix/` | Bug fixes | `fix/resolve-auth-issue` |
+| `refactor/` | Code refactoring | `refactor/simplify-agent-loop` |
+| `docs/` | Documentation updates | `docs/update-readme` |
+| `test/` | Test additions or fixes | `test/add-session-tests` |
+| `chore/` | Maintenance tasks | `chore/update-dependencies` |
+
+## Code Style Guidelines
+
+### TypeScript Standards
+
+<CodeGroup>
+```typescript Good Example
+// Use meaningful names
+export async function createAgentSession(
+  workspaceId: string,
+  options: SessionOptions
+): Promise<AgentSession> {
+  // Implementation
+}
+
+// Add JSDoc for complex functions
+/**
+ * Summarizes large tool responses using Claude Haiku
+ * @param response - The raw tool response
+ * @param intent - The intended use context
+ * @returns Summarized response text
+ */
+export function summarizeResponse(
+  response: string,
+  intent: string
+): Promise<string> {
+  // Implementation
+}
+```
+
+```typescript Avoid
+// Vague names
+function doStuff(data: any) {
+  // Bad: using 'any' type
+}
+
+// No documentation for complex logic
+function complexAlgorithm(x, y, z) {
+  // Bad: missing types and docs
+}
+```
+</CodeGroup>
+
+### Code Organization
+
+- **Follow existing patterns** in the codebase
+- **Use meaningful variable and function names**
+- **Add comments for complex logic** that isn't self-explanatory
+- **Keep functions focused** on a single responsibility
+- **Prefer composition** over inheritance
+
+### Key Areas of the Codebase
+
+| Area | Location | Purpose |
+|------|----------|--------|
+| **Agent Logic** | `packages/shared/src/agent/` | Core agent implementation and permissions |
+| **Authentication** | `packages/shared/src/auth/` | OAuth, tokens, credential management |
+| **MCP Integration** | `packages/shared/src/mcp/` | Model Context Protocol servers |
+| **UI Components** | `packages/ui/src/` | Reusable React components |
+| **Electron App** | `apps/electron/` | Desktop application shell |
+| **Session Management** | `packages/shared/src/sessions/` | Session persistence and state |
+| **Sources** | `packages/shared/src/sources/` | MCP, API, and local data sources |
+
+## Commit Conventions
+
+Use clear, descriptive commit messages that explain **what** changed and **why**:
+
+<CodeGroup>
+```bash Good Commits
+git commit -m "feat: add support for custom OAuth providers"
+git commit -m "fix: resolve race condition in session persistence"
+git commit -m "docs: update API integration guide"
+git commit -m "refactor: simplify agent permission checking logic"
+```
+
+```bash Avoid
+git commit -m "update stuff"
+git commit -m "fix bug"
+git commit -m "changes"
+```
+</CodeGroup>
+
+### Commit Message Format
+
+```
+<type>: <subject>
+
+<optional body>
+
+<optional footer>
+```
+
+**Types:**
+- `feat` - New feature
+- `fix` - Bug fix
+- `docs` - Documentation changes
+- `refactor` - Code refactoring (no functional changes)
+- `test` - Adding or updating tests
+- `chore` - Maintenance tasks
+- `perf` - Performance improvements
+
+## Pull Request Process
+
+<Steps>
+  <Step title="Create a clear PR title">
+    Use the same format as commit messages:
+    
+    ```
+    feat: add background task progress tracking
+    fix: resolve session loading race condition
+    docs: improve MCP integration guide
+    ```
+  </Step>
+
+  <Step title="Write a comprehensive description">
+    Use this template:
+    
+    ```markdown
+    ## Summary
+    Brief description of what this PR does and why.
+    
+    ## Changes
+    - Change 1: Added feature X
+    - Change 2: Fixed issue with Y
+    - Change 3: Refactored Z for clarity
+    
+    ## Testing
+    Describe how you tested these changes:
+    - Tested scenario A
+    - Verified fix for issue B
+    - Checked regression on feature C
+    
+    ## Screenshots (if applicable)
+    Include screenshots for UI changes
+    ```
+  </Step>
+
+  <Step title="Ensure all checks pass">
+    Before submitting:
+    
+    <CodeGroup>
+    ```bash Type Check
+    bun run typecheck:all
+    ```
+    
+    ```bash Lint
+    bun run lint
+    ```
+    
+    ```bash Test Build
+    bun run electron:build
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Request review">
+    Tag relevant maintainers or wait for automatic review assignment.
+  </Step>
+</Steps>
+
+<Warning>
+PRs that don't pass type checking or have linting errors will not be merged. Please fix all issues before requesting review.
+</Warning>
+
+## Testing Guidelines
+
+### Manual Testing
+
+For UI changes, test:
+
+- **Core functionality** works as expected
+- **Edge cases** are handled properly
+- **Different screen sizes** render correctly
+- **Keyboard shortcuts** still work
+- **Performance** is not degraded
+
+### Automated Testing
+
+Run the test suite:
+
+```bash
+bun test
+```
+
+## Documentation
+
+When adding new features:
+
+- Update relevant documentation in the repository
+- Add JSDoc comments for public APIs
+- Include examples in code comments where helpful
+- Update README.md if necessary
+
+## Questions and Support
+
+### Getting Help
+
+- **Open an issue** for bugs or feature requests
+- **Start a discussion** for questions or ideas
+- **Check existing issues** before creating new ones
+
+### Issue Template
+
+```markdown
+## Description
+Clear description of the issue or feature request
+
+## Steps to Reproduce (for bugs)
+1. Step one
+2. Step two
+3. Expected vs actual behavior
+
+## Environment
+- OS: [e.g., macOS 14.0]
+- Craft Agents version: [e.g., 0.6.0]
+- Node/Bun version: [e.g., Bun 1.x]
+```
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the **Apache License 2.0**.
+
+This project uses:
+- [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk) - subject to [Anthropic's Commercial Terms](https://www.anthropic.com/legal/commercial-terms)
+- Various open-source dependencies - see `package.json` for full list
+
+## Recognition
+
+All contributors will be recognized in the project. Significant contributions may be highlighted in release notes.
+
+<Note>
+Thank you for contributing to Craft Agents! Your efforts help make agent-native software more accessible to everyone.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Setup" icon="wrench" href="/development/contributing/setup">
+    Set up your development environment
+  </Card>
+  <Card title="Building" icon="hammer" href="/development/contributing/building">
+    Learn how to build for production
+  </Card>
+</CardGroup>

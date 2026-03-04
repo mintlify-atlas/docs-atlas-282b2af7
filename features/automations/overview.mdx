@@ -1,0 +1,306 @@
+---
+title: Automations Overview
+description: Event-driven automation system for creating agent sessions based on labels, schedules, tool usage, and more
+---
+
+Automations let you automate workflows by triggering actions when events happen — labels change, sessions start, tools run, or on a cron schedule.
+
+## Quick Start
+
+Just ask the agent to set up an automation:
+
+<CodeGroup>
+```text Daily Standup
+"Set up a daily standup briefing every weekday at 9am"
+```
+
+```text Urgent Label
+"Notify me when a session is labelled urgent"
+```
+
+```text Weekly Summary
+"Every Friday at 5pm, summarise this week's completed tasks"
+```
+</CodeGroup>
+
+The agent will create the automation configuration for you automatically.
+
+## Configuration File
+
+Automations are defined in `automations.json` at the workspace level:
+
+```
+~/.craft-agent/workspaces/{id}/automations.json
+```
+
+### Basic Structure
+
+```json
+{
+  "version": 2,
+  "automations": {
+    "LabelAdd": [
+      {
+        "matcher": "^urgent$",
+        "labels": ["Automated"],
+        "actions": [
+          {
+            "type": "prompt",
+            "prompt": "An urgent label was added. Triage and summarise."
+          }
+        ]
+      }
+    ],
+    "SchedulerTick": [
+      {
+        "cron": "0 9 * * 1-5",
+        "timezone": "America/New_York",
+        "actions": [
+          {
+            "type": "prompt",
+            "prompt": "Check @github for new issues assigned to me"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+<Note>
+The `version` field is optional. It's reserved for future schema changes and currently defaults to version 2.
+</Note>
+
+## Automation Matchers
+
+Each event type can have multiple matchers. A matcher defines:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | 6-character hex ID (auto-generated) |
+| `name` | string | Display name (optional) |
+| `matcher` | string | Regex pattern for event data |
+| `cron` | string | Cron expression (SchedulerTick only) |
+| `timezone` | string | IANA timezone (e.g., "Europe/Budapest") |
+| `permissionMode` | string | Permission mode: `safe`, `ask`, or `allow-all` |
+| `labels` | string[] | Labels to apply to created sessions |
+| `enabled` | boolean | Enable/disable without removing (default: true) |
+| `actions` | array | List of actions to execute |
+
+### Example Matcher
+
+```json
+{
+  "id": "a3f5c8",
+  "name": "Track urgent issues",
+  "matcher": "^urgent$",
+  "permissionMode": "ask",
+  "labels": ["Automated", "Urgent"],
+  "enabled": true,
+  "actions": [
+    {
+      "type": "prompt",
+      "prompt": "Triage this urgent session: $CRAFT_SESSION_NAME"
+    }
+  ]
+}
+```
+
+## Prompt Actions
+
+Prompt actions create new agent sessions with a specified prompt.
+
+### Basic Prompt
+
+```json
+{
+  "type": "prompt",
+  "prompt": "Check for new issues and summarise"
+}
+```
+
+### Prompt with Source References
+
+```json
+{
+  "type": "prompt",
+  "prompt": "Check @github for new issues assigned to me and notify @slack"
+}
+```
+
+<Note>
+Use `@sourceName` to reference sources (like `@github`, `@linear`, `@slack`) and skills in your prompts.
+</Note>
+
+### Prompt with LLM Configuration
+
+```json
+{
+  "type": "prompt",
+  "prompt": "Analyse security vulnerabilities in the latest commits",
+  "llmConnection": "anthropic-primary",
+  "model": "claude-opus-4"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `llmConnection` | LLM connection slug (falls back to workspace default) |
+| `model` | Model ID (falls back to provider default) |
+
+## Environment Variables
+
+Automation prompts support environment variables that are automatically expanded:
+
+### Core Variables
+
+| Variable | Description |
+|----------|-------------|
+| `$CRAFT_EVENT` | The event type that triggered the automation |
+| `$CRAFT_SESSION_ID` | The session ID (if available) |
+| `$CRAFT_SESSION_NAME` | The session name (sanitized for shell safety) |
+| `$CRAFT_WORKSPACE_ID` | The workspace ID |
+| `$CRAFT_EVENT_DATA` | Full event payload as JSON |
+
+### Event-Specific Variables
+
+<Accordion title="Label Events">
+- `$CRAFT_LABEL` - The label that was added or removed
+</Accordion>
+
+<Accordion title="Permission Mode Events">
+- `$CRAFT_OLD_MODE` - Previous permission mode
+- `$CRAFT_NEW_MODE` - New permission mode
+</Accordion>
+
+<Accordion title="Session Status Events">
+- `$CRAFT_OLD_STATE` - Previous status
+- `$CRAFT_NEW_STATE` - New status
+</Accordion>
+
+<Accordion title="Flag Events">
+- `$CRAFT_IS_FLAGGED` - Whether session is flagged (true/false)
+</Accordion>
+
+<Accordion title="Scheduler Events">
+- `$CRAFT_LOCAL_TIME` - Local time (HH:MM format)
+- `$CRAFT_LOCAL_DATE` - Local date (YYYY-MM-DD)
+</Accordion>
+
+### Example with Variables
+
+```json
+{
+  "type": "prompt",
+  "prompt": "Session '$CRAFT_SESSION_NAME' was marked as $CRAFT_LABEL. Review and triage."
+}
+```
+
+## Permission Modes
+
+You can set the permission mode for sessions created by automations:
+
+```json
+{
+  "matcher": "^urgent$",
+  "permissionMode": "allow-all",
+  "actions": [
+    {
+      "type": "prompt",
+      "prompt": "Automatically fix the urgent issue"
+    }
+  ]
+}
+```
+
+| Mode | Display | Behavior |
+|------|---------|----------|
+| `safe` | Explore | Read-only, blocks write operations |
+| `ask` | Ask to Edit | Prompts for approval (default) |
+| `allow-all` | Auto | Auto-approves all commands |
+
+<Note>
+Use `allow-all` with caution. It grants the agent full write access without prompts.
+</Note>
+
+## Labels
+
+Automations can apply labels to sessions they create:
+
+```json
+{
+  "cron": "0 9 * * 1-5",
+  "labels": ["Scheduled", "Daily Standup"],
+  "actions": [
+    {
+      "type": "prompt",
+      "prompt": "Generate daily standup report"
+    }
+  ]
+}
+```
+
+Labels support environment variable expansion:
+
+```json
+{
+  "matcher": ".*",
+  "labels": ["Auto-$CRAFT_LABEL"],
+  "actions": [
+    {
+      "type": "prompt",
+      "prompt": "Process labelled session"
+    }
+  ]
+}
+```
+
+## Enabling/Disabling Automations
+
+Disable an automation without removing it:
+
+```json
+{
+  "matcher": "^test$",
+  "enabled": false,
+  "actions": [
+    {
+      "type": "prompt",
+      "prompt": "This won't run"
+    }
+  ]
+}
+```
+
+<Note>
+Disabled automations remain in the configuration but won't execute. Set `enabled: true` or remove the field to re-enable.
+</Note>
+
+## History Logging
+
+All automation executions are logged to:
+
+```
+~/.craft-agent/workspaces/{id}/automations-history.jsonl
+```
+
+Each line is a JSON object containing:
+- Event type
+- Timestamp
+- Matcher ID
+- Session ID
+- Labels applied
+- Execution result
+
+The history is automatically rotated to keep the last 1000 entries.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Events Reference" icon="calendar" href="/features/automations/events">
+    Explore all supported events and their matchers
+  </Card>
+  <Card title="Automation Examples" icon="code" href="./examples">
+    Real-world automation recipes and patterns
+  </Card>
+</CardGroup>

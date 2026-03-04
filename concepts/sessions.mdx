@@ -1,0 +1,477 @@
+---
+title: 'Sessions'
+description: 'Conversation boundaries with 1:1 SDK session mapping'
+icon: 'messages'
+---
+
+## What is a Session?
+
+A **session** represents a single conversation scope with an AI agent. Sessions are the **primary isolation boundary** in Craft Agents:
+
+- Each session maps **1:1 with an SDK session** (Claude Agent SDK, Pi SDK, etc.)
+- Sessions maintain independent conversation history, token usage, and metadata
+- Multiple sessions can run simultaneously in the same workspace
+- Sessions persist their complete state in **JSONL format** for efficient streaming
+
+<Info>
+**Key Insight**: Sessions are conversation boundaries, not workspaces. You can have multiple conversations (sessions) in the same project (workspace) without them interfering with each other.
+</Info>
+
+## Session Type Definition
+
+```typescript
+interface Session {
+  id: string;                    // Unique identifier (stable, known immediately)
+  sdkSessionId?: string;         // SDK session ID (captured after first message)
+  workspaceId: string;           // Which workspace this session belongs to
+  name?: string;                 // Optional user-defined name
+  createdAt: number;             // Unix timestamp
+  lastUsedAt: number;            // For sorting recent sessions
+  
+  // Workflow management
+  isArchived?: boolean;          // Whether this session is archived
+  isFlagged?: boolean;           // Whether this session is flagged
+  status?: SessionStatus;        // 'todo' | 'in_progress' | 'needs_review' | 'done' | 'cancelled'
+  
+  // Read tracking
+  lastReadMessageId?: string;    // ID of the last message the user has read
+}
+```
+
+### Session Status
+
+Sessions can have workflow statuses for task tracking:
+
+```typescript
+type SessionStatus = 'todo' | 'in_progress' | 'needs_review' | 'done' | 'cancelled';
+```
+
+<Note>
+The status system is **extensible** - workspaces can define custom statuses via `statuses/config.json`.
+</Note>
+
+## Session Storage
+
+Sessions are stored at `~/.craft-agent/workspaces/{workspace-id}/sessions/{session-id}/`:
+
+```
+sessions/session-abc123/
+├── session.jsonl           # Messages + header (JSONL format)
+├── attachments/            # File attachments
+│   ├── image-1.png
+│   └── document.pdf
+├── plans/                  # Plan files (safe mode)
+│   └── plan-1.md
+├── data/                   # Transform output (JSON)
+│   └── analysis.json
+├── long_responses/         # Summarized tool results
+│   └── large-output.txt
+└── downloads/              # Binary downloads from APIs
+    └── report.pdf
+```
+
+### JSONL Format
+
+Sessions use **JSONL (JSON Lines)** for efficient streaming writes:
+
+```jsonl
+{"id":"session-abc123","workspaceId":"ws-2024-01","createdAt":1705334400000,"lastUsedAt":1705420800000,"tokenUsage":{"inputTokens":1250,"outputTokens":830}}
+{"id":"msg-1","type":"user","content":"Help me refactor this function","timestamp":1705334401000}
+{"id":"msg-2","type":"assistant","content":"I'll help you refactor that function. Let me read the file first.","timestamp":1705334402000}
+{"id":"msg-3","type":"tool","toolName":"Read","input":{"filePath":"./src/utils.ts"},"result":"...","timestamp":1705334403000}
+```
+
+**Benefits:**
+
+- **Streaming writes** - Append messages without rewriting the entire file
+- **Incremental reads** - Load messages on demand (line 1 = header, rest = messages)
+- **Efficient parsing** - No need to load entire conversation into memory
+- **Crash resilient** - Partial writes don't corrupt previous messages
+
+<Card title="Session Persistence Implementation" icon="code" href="/development/architecture/packages">
+  See the PersistenceQueue for debounced session writes
+</Card>
+
+## Session Lifecycle
+
+### 1. Creation
+
+```typescript
+import { createSession } from '@craft-agent/shared/sessions';
+
+const session = await createSession(
+  workspace.rootPath,
+  workspace.id
+);
+
+console.log(`Created session: ${session.id}`);
+// Output: session-2024-01-15-abc123
+```
+
+### 2. Loading
+
+```typescript
+import { loadSession } from '@craft-agent/shared/sessions';
+
+// Load full session with messages
+const session = loadSession(workspace.rootPath, sessionId);
+
+console.log(`Messages: ${session.messages.length}`);
+console.log(`Tokens: ${session.tokenUsage.inputTokens}`);
+```
+
+### 3. Metadata-Only Loading
+
+For listing sessions, use `SessionMetadata` to avoid loading all messages:
+
+```typescript
+import { listSessions } from '@craft-agent/shared/sessions';
+
+// Fast listing without loading message content
+const sessions = listSessions(workspace.rootPath);
+
+sessions.forEach(session => {
+  console.log(`${session.name || session.id}`);
+  console.log(`  Messages: ${session.messageCount}`);
+  console.log(`  Preview: ${session.preview}`);
+});
+```
+
+### 4. Persistence
+
+Sessions are persisted using a **debounced write queue**:
+
+```typescript
+import { sessionPersistenceQueue } from '@craft-agent/shared/sessions';
+
+// Queue a session write (debounced 500ms)
+await sessionPersistenceQueue.queueWrite(
+  workspace.rootPath,
+  session
+);
+
+// Flush immediately if needed
+await sessionPersistenceQueue.flush();
+```
+
+<Info>
+The persistence queue batches writes to avoid excessive disk I/O during rapid message streams.
+</Info>
+
+### 5. Archiving
+
+```typescript
+import { updateSession } from '@craft-agent/shared/sessions';
+
+// Archive a session
+await updateSession(workspace.rootPath, session.id, {
+  isArchived: true
+});
+```
+
+### 6. Deletion
+
+```typescript
+import { deleteSession } from '@craft-agent/shared/sessions';
+
+// Permanently delete session and all data
+await deleteSession(workspace.rootPath, session.id);
+```
+
+<Warning>
+Deletion is **permanent** and removes all messages, attachments, and metadata. There is no undo.
+</Warning>
+
+## Session Configuration
+
+Sessions have runtime configuration for agent behavior:
+
+```typescript
+interface SessionConfig {
+  id: string;
+  workspaceId: string;
+  
+  // Working directory (user-changeable, independent of workspace root)
+  workingDirectory?: string;
+  
+  // SDK storage location (for transcript files)
+  sdkCwd?: string;
+  
+  // Permission mode for this session
+  permissionMode?: PermissionMode;
+  
+  // Enabled sources (subset of workspace sources)
+  enabledSourceSlugs?: string[];
+  
+  // Recovery messages for session resume
+  getRecoveryMessages?: () => RecoveryMessage[];
+}
+```
+
+### Working Directory
+
+Sessions have their own working directory, independent of the workspace root:
+
+```typescript
+import { updateSession } from '@craft-agent/shared/sessions';
+
+// Change working directory mid-session
+await updateSession(workspace.rootPath, session.id, {
+  workingDirectory: '/Users/alice/Projects/my-app/backend'
+});
+```
+
+<Note>
+The working directory affects where bash commands run and how relative paths are resolved. It does NOT change the workspace scope.
+</Note>
+
+## Session-Scoped Permissions
+
+Each session has its own permission mode:
+
+```typescript
+import { getPermissionMode, setPermissionMode } from '@craft-agent/shared/agent';
+
+// Get current mode for session
+const mode = getPermissionMode(workspace.id, session.id);
+console.log(mode); // 'safe' | 'ask' | 'allow-all'
+
+// Set mode for session
+setPermissionMode(workspace.id, session.id, 'safe');
+```
+
+### Permission Mode Behavior
+
+<CardGroup cols={3}>
+  <Card title="Explore" icon="eye" color="#3b82f6">
+    **Mode:** `safe`
+    
+    Read-only exploration. Blocks:
+    - All bash commands
+    - Write, Edit tools
+    - MCP mutations
+    - API mutations
+  </Card>
+  
+  <Card title="Ask to Edit" icon="circle-question" color="#f59e0b">
+    **Mode:** `ask`
+    
+    Prompts for bash commands:
+    - Bash → permission dialog
+    - Write/Edit → allowed
+    - MCP/API → allowed
+  </Card>
+  
+  <Card title="Auto" icon="bolt" color="#10b981">
+    **Mode:** `allow-all`
+    
+    Auto-approves everything:
+    - All tools allowed
+    - No permission dialogs
+    - Fastest iteration
+  </Card>
+</CardGroup>
+
+<Card title="Permission Configuration" icon="shield" href="/features/permissions/modes">
+  Learn about custom permission rules and safe mode
+</Card>
+
+## Session Recovery
+
+When resuming a session after a crash or restart, Craft Agents uses **recovery context**:
+
+```typescript
+import type { RecoveryMessage } from '@craft-agent/shared/agent';
+
+interface RecoveryMessage {
+  type: 'user' | 'assistant';
+  content: string;
+}
+
+// Provide recovery context to agent
+const agent = createAgent({
+  session: {
+    id: session.id,
+    getRecoveryMessages: () => [
+      { type: 'user', content: 'Refactor the login function' },
+      { type: 'assistant', content: 'I\'ll read the file first...' }
+    ]
+  }
+});
+```
+
+### Recovery Strategy
+
+1. **Detect empty response** - SDK returns empty on missing thread
+2. **Extract recent messages** - Get last 5-10 messages from session
+3. **Format as context** - Prepend to next user message
+4. **Resume naturally** - Agent continues from where it left off
+
+<Info>
+Recovery messages are **truncated** to ~1000 characters each to avoid bloating context.
+</Info>
+
+## Session Branching
+
+Some backends (Claude, Pi) support creating **branch sessions** from existing conversations:
+
+```typescript
+import { createBranchSession } from '@craft-agent/shared/sessions';
+
+const branchSession = await createBranchSession(
+  workspace.rootPath,
+  parentSession.id,
+  parentSession.sdkSessionId,
+  'Explore alternative approach'
+);
+
+console.log(`Branched from ${parentSession.id} → ${branchSession.id}`);
+```
+
+**Use cases:**
+
+- Try alternative implementations without losing progress
+- Explore "what if" scenarios
+- A/B test different approaches
+
+<Note>
+Branch sessions share history up to the branch point, then diverge. Parent and branch sessions remain independent.
+</Note>
+
+## Token Usage Tracking
+
+```typescript
+import type { SessionTokenUsage } from '@craft-agent/shared/sessions';
+
+interface SessionTokenUsage {
+  inputTokens: number;           // Total input tokens
+  outputTokens: number;          // Total output tokens
+  cacheCreationTokens?: number;  // Prompt caching (write)
+  cacheReadTokens?: number;      // Prompt caching (read)
+  totalCost?: number;            // USD cost estimate
+}
+
+// Access token usage
+const session = loadSession(workspace.rootPath, sessionId);
+console.log(`Input: ${session.tokenUsage.inputTokens}`);
+console.log(`Output: ${session.tokenUsage.outputTokens}`);
+console.log(`Cost: $${session.tokenUsage.totalCost?.toFixed(4)}`);
+```
+
+<Card title="Usage Tracking" icon="chart-line" href="/concepts/sessions">
+  See UsageTracker for real-time token monitoring
+</Card>
+
+## Session Metadata
+
+For efficient listing, use `SessionMetadata` without loading messages:
+
+```typescript
+interface SessionMetadata {
+  id: string;
+  workspaceId: string;
+  name?: string;
+  createdAt: number;
+  lastUsedAt: number;
+  messageCount: number;
+  preview?: string;        // Preview of first user message
+  sdkSessionId?: string;
+  isArchived?: boolean;
+  isFlagged?: boolean;
+  status?: SessionStatus;
+  hidden?: boolean;        // Hidden from session list
+}
+```
+
+### Listing Sessions
+
+```typescript
+import { listSessions } from '@craft-agent/shared/sessions';
+
+// List all sessions (metadata only)
+const allSessions = listSessions(workspace.rootPath);
+
+// Filter active sessions
+const activeSessions = allSessions.filter(s => !s.isArchived);
+
+// Sort by last used
+activeSessions.sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+
+// Most recent session
+const latest = activeSessions[0];
+console.log(`Latest: ${latest.name || latest.id}`);
+console.log(`  ${latest.messageCount} messages`);
+console.log(`  Preview: ${latest.preview}`);
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Name Your Sessions">
+    Give sessions descriptive names for easy identification:
+    ```typescript
+    await updateSession(workspace.rootPath, session.id, {
+      name: 'Refactor authentication system'
+    });
+    ```
+    Good names:
+    - "Fix login redirect bug"
+    - "Add dark mode support"
+    - "Database migration planning"
+    
+    Bad names:
+    - "Session 1"
+    - "Test"
+    - "New conversation"
+  </Accordion>
+
+  <Accordion title="Use Statuses for Workflow">
+    Track session progress with statuses:
+    ```typescript
+    await updateSession(workspace.rootPath, session.id, {
+      status: 'in_progress'
+    });
+    // Later...
+    await updateSession(workspace.rootPath, session.id, {
+      status: 'needs_review'
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Archive Completed Sessions">
+    Keep your session list clean:
+    ```typescript
+    await updateSession(workspace.rootPath, session.id, {
+      isArchived: true,
+      status: 'done'
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Monitor Token Usage">
+    Check token usage periodically:
+    ```typescript
+    const session = loadSession(workspace.rootPath, sessionId);
+    if (session.tokenUsage.inputTokens > 100000) {
+      console.warn('Session approaching context limit');
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Concepts
+
+<CardGroup cols={2}>
+  <Card title="Workspaces" icon="folder" href="/concepts/workspaces">
+    Project-scoped configuration and storage
+  </Card>
+  <Card title="Agents" icon="robot" href="/concepts/agents">
+    Agent backends and session management
+  </Card>
+  <Card title="Permissions" icon="shield" href="/features/permissions/modes">
+    Session-scoped permission modes
+  </Card>
+  <Card title="Persistence Queue" icon="database" href="/development/architecture/packages">
+    Debounced session write implementation
+  </Card>
+</CardGroup>

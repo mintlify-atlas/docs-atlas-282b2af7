@@ -1,0 +1,560 @@
+---
+title: 'API Sources'
+description: 'Connect REST APIs with automatic authentication and OAuth flows'
+icon: 'code'
+---
+
+## What are API Sources?
+
+API Sources transform REST APIs into dynamic MCP tools. Instead of manually implementing API clients, you configure the base URL and authentication, and Craft Agents creates a flexible tool that handles requests automatically.
+
+<Card title="How it Works" icon="wand-magic-sparkles">
+  1. Configure API endpoint and auth method
+  2. System generates a flexible `api_{name}` tool
+  3. Agent calls tool with `{ path, method, params }`
+  4. Authentication headers injected automatically
+  5. Response returned (or saved if binary/large)
+</Card>
+
+## Authentication Types
+
+API sources support six authentication methods:
+
+### Bearer Token
+
+Most common for API keys and access tokens:
+
+```json
+{
+  "type": "api",
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "authType": "bearer",
+    "authScheme": "Bearer"
+  }
+}
+```
+
+Supports custom schemes:
+- `"Bearer"` (default) → `Authorization: Bearer token123`
+- `"Token"` → `Authorization: Token token123`
+- `""` (empty) → `Authorization: token123` (no prefix)
+
+### Header Authentication
+
+Custom header for API keys:
+
+```json
+{
+  "type": "api",
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "authType": "header",
+    "headerName": "X-API-Key"
+  }
+}
+```
+
+Request includes:
+```http
+X-API-Key: your-api-key-here
+```
+
+### Multi-Header Authentication
+
+APIs requiring multiple auth headers (e.g., Datadog):
+
+```json
+{
+  "type": "api",
+  "api": {
+    "baseUrl": "https://api.datadoghq.com",
+    "authType": "header",
+    "headerNames": ["DD-API-KEY", "DD-APPLICATION-KEY"]
+  }
+}
+```
+
+Credential stored as JSON:
+```json
+{
+  "DD-API-KEY": "api-key-value",
+  "DD-APPLICATION-KEY": "app-key-value"
+}
+```
+
+### Query Parameter Authentication
+
+API key in URL query string:
+
+```json
+{
+  "type": "api",
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "authType": "query",
+    "queryParam": "api_key"
+  }
+}
+```
+
+Requests formatted as:
+```
+https://api.example.com/endpoint?api_key=your-key
+```
+
+### Basic Authentication
+
+Username and password:
+
+```json
+{
+  "type": "api",
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "authType": "basic"
+  }
+}
+```
+
+Credential stored as JSON:
+```json
+{
+  "username": "user",
+  "password": "pass"
+}
+```
+
+Encoded automatically:
+```http
+Authorization: Basic dXNlcjpwYXNz
+```
+
+### OAuth (Google, Slack, Microsoft)
+
+Full OAuth 2.0 flows with automatic token refresh. See [OAuth Providers](#oauth-providers) section below.
+
+## OAuth Providers
+
+Three providers have built-in OAuth support with automatic token refresh:
+
+### Google APIs
+
+Supports Gmail, Calendar, Drive, Docs, Sheets:
+
+```json
+{
+  "name": "Gmail",
+  "provider": "google",
+  "type": "api",
+  "api": {
+    "baseUrl": "https://gmail.googleapis.com",
+    "authType": "bearer",
+    "googleService": "gmail"
+  }
+}
+```
+
+<Accordion title="Google Service Scopes">
+  | Service | Scopes |
+  |---------|--------|
+  | `gmail` | `gmail.readonly`, `gmail.send`, `gmail.modify` |
+  | `calendar` | `calendar.readonly`, `calendar.events` |
+  | `drive` | `drive.readonly`, `drive.file` |
+  | `docs` | `documents.readonly` |
+  | `sheets` | `spreadsheets.readonly` |
+  
+  Override with custom scopes:
+  ```json
+  "googleScopes": ["https://www.googleapis.com/auth/gmail.compose"]
+  ```
+</Accordion>
+
+<Steps>
+  <Step title="Configure Source">
+    Set `provider: "google"` and `googleService` or `googleScopes`
+  </Step>
+  
+  <Step title="Trigger OAuth Flow">
+    Agent calls `source_google_oauth_trigger` or user initiates from UI
+  </Step>
+  
+  <Step title="User Authenticates">
+    Browser opens Google OAuth consent screen
+  </Step>
+  
+  <Step title="Token Storage">
+    Access token, refresh token, and expiry saved encrypted
+  </Step>
+  
+  <Step title="Automatic Refresh">
+    Tokens refreshed automatically when expired (within 5 min of expiry)
+  </Step>
+</Steps>
+
+### Slack APIs
+
+Supports Slack Web API with user authentication:
+
+```json
+{
+  "name": "Slack",
+  "provider": "slack",
+  "type": "api",
+  "api": {
+    "baseUrl": "https://slack.com/api",
+    "authType": "bearer",
+    "slackService": "full"
+  }
+}
+```
+
+<Accordion title="Slack Service Scopes">
+  Uses `user_scope` for user authentication (not bot):
+  
+  | Service | User Scopes |
+  |---------|-------------|
+  | `messaging` | `chat:write`, `channels:read`, `groups:read` |
+  | `channels` | `channels:history`, `channels:read` |
+  | `users` | `users:read`, `users:read.email` |
+  | `files` | `files:read`, `files:write` |
+  | `full` | All of the above |
+  
+  Override with custom scopes:
+  ```json
+  "slackUserScopes": ["chat:write", "users:read"]
+  ```
+</Accordion>
+
+### Microsoft APIs
+
+Supports Microsoft Graph (Outlook, OneDrive, Calendar, Teams):
+
+```json
+{
+  "name": "Outlook",
+  "provider": "microsoft",
+  "type": "api",
+  "api": {
+    "baseUrl": "https://graph.microsoft.com/v1.0",
+    "authType": "bearer",
+    "microsoftService": "outlook"
+  }
+}
+```
+
+<Accordion title="Microsoft Service Scopes">
+  | Service | Scopes |
+  |---------|--------|
+  | `outlook` | `Mail.Read`, `Mail.Send` |
+  | `microsoft-calendar` | `Calendars.Read`, `Calendars.ReadWrite` |
+  | `onedrive` | `Files.Read`, `Files.ReadWrite` |
+  | `teams` | `Team.ReadBasic.All`, `Chat.Read` |
+  | `sharepoint` | `Sites.Read.All` |
+  
+  Override with custom scopes:
+  ```json
+  "microsoftScopes": ["Mail.Read", "Calendars.Read"]
+  ```
+</Accordion>
+
+<Warning>
+  Microsoft rotates refresh tokens on each use. The system handles this automatically by updating stored credentials after each refresh.
+</Warning>
+
+## Dynamic API Tool
+
+Each API source generates a single flexible tool:
+
+```typescript
+api_{sourceSlug}(
+  path: string,
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+  params?: Record<string, unknown>,
+  _intent?: string
+)
+```
+
+Example usage:
+
+<CodeGroup>
+```typescript Gmail: List Messages
+await api_gmail({
+  path: '/gmail/v1/users/me/messages',
+  method: 'GET',
+  params: { q: 'is:unread', maxResults: 10 },
+  _intent: 'Get recent unread emails to summarize'
+});
+```
+
+```typescript Slack: Post Message
+await api_slack({
+  path: '/chat.postMessage',
+  method: 'POST',
+  params: {
+    channel: 'C1234567890',
+    text: 'Hello from Craft Agent!'
+  },
+  _intent: 'Send notification to engineering channel'
+});
+```
+
+```typescript Microsoft: Get Calendar
+await api_outlook({
+  path: '/me/calendar/events',
+  method: 'GET',
+  params: {
+    $top: 10,
+    $filter: "start/dateTime ge '2024-01-01'"
+  },
+  _intent: 'Retrieve upcoming calendar events'
+});
+```
+</CodeGroup>
+
+### Request Processing
+
+<Steps>
+  <Step title="URL Construction">
+    Base URL + path normalized:
+    ```
+    https://api.example.com + /v1/users → https://api.example.com/v1/users
+    ```
+  </Step>
+  
+  <Step title="Auth Injection">
+    Credentials retrieved and headers built:
+    ```http
+    Authorization: Bearer fresh-token-here
+    Content-Type: application/json
+    ```
+  </Step>
+  
+  <Step title="Parameter Handling">
+    - **GET**: params → query string
+    - **POST/PUT/PATCH**: params → JSON body
+  </Step>
+  
+  <Step title="Response Processing">
+    - Binary responses saved to downloads/
+    - Large responses (>25KB) summarized
+    - Errors include status code and message
+  </Step>
+</Steps>
+
+## Token Refresh Flow
+
+OAuth sources automatically refresh tokens before expiry:
+
+```typescript
+// Token getter function passed to API tool
+const getToken = async () => {
+  const cred = await credManager.load(source);
+  
+  // Check if token needs refresh (within 5 min of expiry)
+  if (credManager.needsRefresh(cred)) {
+    return await credManager.refresh(source);
+  }
+  
+  return cred.value;
+};
+
+// API tool calls getToken before each request
+const server = createApiServer(config, getToken, sessionPath);
+```
+
+<Note>
+  Refresh logic is deduplicated - concurrent requests reuse the same refresh promise to prevent token rotation conflicts (important for Microsoft).
+</Note>
+
+## Bridge MCP Server
+
+For Codex and Copilot sessions, API sources run in a subprocess (Bridge MCP Server). Since it can't access encrypted credentials directly, a **credential cache** is used:
+
+<Steps>
+  <Step title="Main Process Writes Cache">
+    When source is enabled, decrypt credential and write to:
+    ```
+    ~/.craft-agent/workspaces/{ws}/sources/{slug}/.credential-cache.json
+    ```
+    Permissions: `0600` (owner read/write only)
+  </Step>
+  
+  <Step title="Bridge Reads on Each Request">
+    Bridge MCP Server reads fresh credential from cache file before each API call
+  </Step>
+  
+  <Step title="Expiry Check">
+    If token expired, Bridge returns auth error and user must re-authenticate
+  </Step>
+</Steps>
+
+<Warning>
+  This is a **passive refresh model** - Bridge doesn't actively refresh tokens. If a token expires mid-session, the user must re-authenticate via the UI.
+</Warning>
+
+## Creating API Sources
+
+<CodeGroup>
+```typescript Basic API Source
+import { createSource } from '@craft-agent/shared/sources';
+
+await createSource(workspaceRootPath, {
+  name: 'Exa Search',
+  provider: 'exa',
+  type: 'api',
+  api: {
+    baseUrl: 'https://api.exa.ai',
+    authType: 'bearer'
+  },
+  icon: '🔍',
+  enabled: true
+});
+
+// Store API key
+import { getSourceCredentialManager } from '@craft-agent/shared/sources';
+const credManager = getSourceCredentialManager();
+await credManager.save(source, { value: 'exa-api-key-123' });
+```
+
+```typescript Google OAuth Source
+await createSource(workspaceRootPath, {
+  name: 'Gmail',
+  provider: 'google',
+  type: 'api',
+  api: {
+    baseUrl: 'https://gmail.googleapis.com',
+    authType: 'bearer',
+    googleService: 'gmail'
+  },
+  enabled: true
+});
+
+// Trigger OAuth flow
+const result = await credManager.authenticate(source, {
+  onStatus: (msg) => console.log(msg),
+  onError: (err) => console.error(err)
+});
+
+if (result.success) {
+  console.log('Authenticated as:', result.email);
+}
+```
+
+```typescript Multi-Header Auth
+await createSource(workspaceRootPath, {
+  name: 'Datadog',
+  provider: 'datadog',
+  type: 'api',
+  api: {
+    baseUrl: 'https://api.datadoghq.com',
+    authType: 'header',
+    headerNames: ['DD-API-KEY', 'DD-APPLICATION-KEY']
+  },
+  enabled: true
+});
+
+// Store multi-header credentials as JSON
+await credManager.save(source, {
+  value: JSON.stringify({
+    'DD-API-KEY': 'api-key-value',
+    'DD-APPLICATION-KEY': 'app-key-value'
+  })
+});
+```
+</CodeGroup>
+
+## Default Headers
+
+Include headers with every request (e.g., beta features):
+
+```json
+{
+  "type": "api",
+  "api": {
+    "baseUrl": "https://api.example.com",
+    "authType": "bearer",
+    "defaultHeaders": {
+      "X-API-Version": "2024-01",
+      "X-Enable-Beta": "true"
+    }
+  }
+}
+```
+
+## Binary File Handling
+
+API responses are automatically checked for binary content:
+
+```typescript
+// Binary response (PDF, image, archive)
+const result = await api_example({
+  path: '/generate-report',
+  method: 'POST',
+  params: { format: 'pdf' }
+});
+
+// Returns:
+// "[File saved: /path/to/session/downloads/api_example_2024-03-04T12-30-00.pdf (2.3 MB)]"
+```
+
+Supported formats:
+- **Images**: PNG, JPEG, GIF, WebP, SVG
+- **Documents**: PDF, DOCX, XLSX, PPTX
+- **Archives**: ZIP, TAR, GZ
+- **Media**: MP3, MP4, WAV
+
+<Note>
+  Files larger than 100MB are rejected before download to prevent OOM errors.
+</Note>
+
+## Large Response Handling
+
+Text responses over 25KB are automatically handled:
+
+1. **Save to file**: Response saved to `session/downloads/`
+2. **Summarize**: If `summarize` callback provided, AI generates summary
+3. **Return path**: Agent receives file path instead of full content
+
+```typescript
+const summarize = (prompt: string) => agent.runMiniCompletion(prompt);
+
+const server = createApiServer(config, credential, sessionPath, summarize);
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use OAuth for user data" icon="shield-check">
+    OAuth tokens are scoped to the authenticated user. Use bearer tokens only for service accounts or public data.
+  </Accordion>
+  
+  <Accordion title="Document API endpoints in guide.md" icon="book-open">
+    List common endpoints, query patterns, and response structures:
+    ```markdown
+    ## Common Endpoints
+    - `/search` - Search issues (GET, query param: q)
+    - `/issues` - Create issue (POST, body: { title, description })
+    ```
+  </Accordion>
+  
+  <Accordion title="Set meaningful _intent" icon="bullseye">
+    Always include `_intent` parameter to explain what you're trying to accomplish. This helps with debugging and logging.
+  </Accordion>
+  
+  <Accordion title="Handle rate limits gracefully" icon="gauge">
+    Check API documentation for rate limits and implement backoff strategies in your agents.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="MCP Servers" icon="server" href="/features/sources/mcp-servers">
+    Learn about full-featured MCP servers with tools and resources
+  </Card>
+  
+  <Card title="Local Files" icon="folder" href="/features/sources/local-files">
+    Connect to local filesystems and Git repositories
+  </Card>
+</CardGroup>

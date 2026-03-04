@@ -1,0 +1,211 @@
+---
+title: OpenAI
+description: Connect to GPT models using an OpenAI API key
+icon: openai
+---
+
+Craft Agents supports OpenAI's GPT models through the Pi unified LLM API. Connect using an API key from your OpenAI account.
+
+## Setup
+
+<Steps>
+  <Step title="Get your API key">
+    1. Go to [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+    2. Sign in with your OpenAI account
+    3. Click **Create new secret key**
+    4. Give it a name (e.g., "Craft Agents")
+    5. Copy your API key (starts with `sk-proj-` or `sk-`)
+    
+    <Warning>
+      Keep your API key secure. Never commit it to version control or share it publicly.
+    </Warning>
+  </Step>
+
+  <Step title="Add connection in Craft Agents">
+    1. Open **Settings** → **AI Connections**
+    2. Click **Add Connection**
+    3. Select **OpenAI (API Key)**
+    4. Paste your API key
+    5. Choose your default model (e.g., `gpt-5` or `gpt-4o`)
+    6. Click **Save**
+  </Step>
+
+  <Step title="Verify connection">
+    The connection will be automatically validated. You'll see a green checkmark when it's ready to use.
+  </Step>
+</Steps>
+
+## Available Models
+
+Craft Agents automatically detects GPT models available on your API key:
+
+<CodeGroup>
+```typescript Latest Models
+'gpt-5.2'      // Most capable (if you have access)
+'gpt-5.1'
+'gpt-5'
+'o4-mini'      // Fast reasoning model
+'o3'           // Advanced reasoning
+'gpt-4o'       // Omni model (text + vision)
+```
+
+```typescript Legacy Models
+'gpt-4-turbo'
+'gpt-4'
+'gpt-3.5-turbo'
+```
+</CodeGroup>
+
+<Note>
+  Model availability depends on your OpenAI account tier and API access. GPT-5 models may require special access.
+</Note>
+
+Source: `packages/shared/src/config/llm-connections.ts:410-416`
+
+## Using Pi Unified API
+
+OpenAI connections in Craft Agents use the [Pi unified LLM API](https://www.npmjs.com/package/@mariozechner/pi-ai) as the backend. This provides:
+
+- **Automatic credential management** - API keys are securely stored and injected
+- **Model detection** - Automatically lists available models
+- **Error handling** - User-friendly error messages for common issues
+- **Tool support** - MCP servers, APIs, and built-in tools
+
+The connection is configured with:
+
+```typescript
+{
+  providerType: 'pi',
+  piAuthProvider: 'openai',
+  authType: 'api_key',
+  models: [...], // Auto-detected from OpenAI
+}
+```
+
+Source: `packages/shared/src/config/llm-connections.ts:49-58`
+
+## Pricing
+
+OpenAI pricing is based on input and output tokens. Current rates (as of March 2026):
+
+| Model | Input | Output | Context Window |
+|-------|-------|--------|----------------|
+| GPT-5.2 | $30/M tokens | $120/M tokens | 200K |
+| GPT-5 | $15/M tokens | $60/M tokens | 200K |
+| GPT-4o | $2.50/M tokens | $10/M tokens | 128K |
+| o4-mini | $3/M tokens | $12/M tokens | 128K |
+| o3 | $10/M tokens | $40/M tokens | 200K |
+
+Check [openai.com/pricing](https://openai.com/pricing) for the latest rates.
+
+<Note>
+  OpenAI requires a paid account with credits or a valid payment method. Free trial credits are available for new accounts.
+</Note>
+
+## Vision and Multimodal
+
+GPT-4o and newer models support vision and multimodal inputs:
+
+- **Images**: Drag and drop PNG, JPEG, WebP, GIF files
+- **Documents**: PDF (automatically converted to images)
+
+The model will analyze the image and respond accordingly.
+
+```bash Example
+User: [Attaches screenshot] What's wrong with this code?
+GPT-4o: I see the issue. Line 23 has a syntax error - you're missing
+a closing parenthesis. Change `foo(bar` to `foo(bar)`.
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Authentication failed">
+    **Error:** `Authentication failed. Check your API key or OAuth token.`
+    
+    **Solutions:**
+    - Verify your API key starts with `sk-` or `sk-proj-` and has no extra whitespace
+    - Check that your OpenAI account is active and has credits
+    - Ensure you're not using an old/revoked API key
+    - Try creating a new API key in the OpenAI dashboard
+  </Accordion>
+
+  <Accordion title="Rate limits">
+    **Error:** `Rate limited or quota exceeded. Try again later.`
+    
+    OpenAI enforces rate limits based on your tier:
+    - **Tier 1** (new accounts): 500 requests/day
+    - **Tier 5** (high usage): 10,000 requests/minute
+    
+    Wait a few minutes and try again. Check your [rate limits dashboard](https://platform.openai.com/settings/organization/limits).
+  </Accordion>
+
+  <Accordion title="Insufficient credits">
+    **Error:** `Billing issue. Check your account credits or payment method.`
+    
+    Your OpenAI account has run out of credits:
+    1. Go to [platform.openai.com/settings/organization/billing](https://platform.openai.com/settings/organization/billing)
+    2. Add a payment method or purchase more credits
+    3. Wait a few minutes for the changes to take effect
+  </Accordion>
+
+  <Accordion title="Model not available">
+    **Error:** `Model not found. Check the connection configuration.`
+    
+    Some models require special access:
+    - **GPT-5** requires waitlist approval from OpenAI
+    - **o4-mini/o3** require Tier 3+ API access
+    - Check your account's [model availability](https://platform.openai.com/docs/models)
+  </Accordion>
+</AccordionGroup>
+
+## OpenAI vs ChatGPT Plus
+
+Craft Agents supports two ways to use OpenAI models:
+
+| Feature | OpenAI API Key | ChatGPT Plus OAuth |
+|---------|----------------|---------------------|
+| **Cost** | Pay-per-use (tokens) | $20/month subscription |
+| **Models** | All GPT models | Same as API |
+| **Rate limits** | Based on tier | Higher limits |
+| **Setup** | API key | One-click OAuth |
+| **Billing** | Per-token | Flat monthly fee |
+
+<Note>
+  ChatGPT Plus OAuth uses the Codex auth provider (`openai-codex`) which provides higher rate limits than standard API keys.
+</Note>
+
+If you already have a ChatGPT Plus subscription, you can use OAuth instead of an API key:
+
+1. Open **Settings** → **AI Connections**
+2. Click **Add Connection**
+3. Select **ChatGPT Plus (OAuth)**
+4. Sign in with your OpenAI account
+
+Source: `apps/electron/src/renderer/hooks/useOnboarding.ts:549-551`
+
+## Comparing OpenAI to Claude
+
+| Feature | OpenAI (GPT) | Anthropic (Claude) |
+|---------|--------------|--------------------|
+| **Reasoning** | o3, o4-mini (strong) | Claude Opus 4.6 (excellent) |
+| **Speed** | gpt-4o (fast) | Claude Haiku 4.5 (faster) |
+| **Context** | 128K-200K | 200K |
+| **Vision** | GPT-4o (excellent) | Claude (excellent) |
+| **Pricing** | $2.50-$30/M tokens | $0.80-$15/M tokens |
+| **Tool use** | Good | Excellent |
+
+<Tip>
+  For coding tasks, Claude Sonnet 4.6 generally performs better than GPT-4o. For general reasoning, o3 and GPT-5 are competitive with Claude Opus 4.6.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Add Claude" icon="claude" href="/integrations/llm/anthropic">
+    Compare with Claude models
+  </Card>
+  <Card title="GitHub Copilot" icon="github" href="/integrations/llm/github-copilot">
+    Use your Copilot subscription
+  </Card>
+</CardGroup>

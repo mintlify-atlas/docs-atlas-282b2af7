@@ -1,0 +1,538 @@
+---
+title: 'Custom MCP Servers'
+description: 'Add custom MCP servers to extend agent capabilities with stdio commands or HTTP/SSE endpoints'
+---
+
+<Info>
+Craft Agents supports both **local MCP servers** (stdio) and **remote MCP servers** (HTTP/SSE) for maximum flexibility.
+</Info>
+
+## Adding Custom Servers
+
+### Tell the Agent
+
+The easiest way to add a custom MCP server is to ask the agent:
+
+<CodeGroup>
+```
+"Add the Brave Search MCP server"
+```
+
+```
+"Connect to the Memory MCP server for persistent storage"
+```
+
+```
+"Add a custom MCP server at https://my-api.com/mcp"
+```
+</CodeGroup>
+
+The agent will:
+1. Research the server (if it's a known MCP server)
+2. Create the appropriate `config.json` configuration
+3. Set up authentication if needed
+4. Test the connection
+5. Configure Explore mode permissions
+
+### Manual Configuration
+
+You can also manually create source configurations at:
+
+```
+~/.craft-agent/workspaces/{workspaceId}/sources/{sourceSlug}/
+```
+
+Each source needs:
+- `config.json` - Source configuration (required)
+- `guide.md` - Usage documentation (optional)
+- `permissions.json` - Permission rules (optional)
+
+## Source Configuration
+
+### Config Structure
+
+Every MCP source requires a `config.json` with these fields:
+
+```json config.json
+{
+  "id": "unique_id",           // Format: {slug}_{random8chars}
+  "name": "Display Name",       // Human-readable name
+  "slug": "source-slug",        // URL-safe identifier
+  "provider": "provider-name",  // Provider identifier
+  "type": "mcp",                // Must be "mcp"
+  "icon": "icon-url",           // URL to icon (auto-downloaded)
+  "tagline": "Short description", // For agent context
+  "mcp": {
+    // Transport-specific config (see below)
+  },
+  "authType": "none" | "bearer" | "oauth"
+}
+```
+
+<Note>
+The `icon` URL is automatically downloaded and cached locally. Use an emoji as fallback if no icon is available.
+</Note>
+
+## Transport Types
+
+### HTTP/SSE Transport
+
+For **remote MCP servers** accessible via HTTP or Server-Sent Events:
+
+<CodeGroup>
+```json Basic HTTP
+{
+  "mcp": {
+    "transport": "http",
+    "url": "https://api.example.com/mcp"
+  },
+  "authType": "none"
+}
+```
+
+```json With Bearer Auth
+{
+  "mcp": {
+    "transport": "http",
+    "url": "https://api.example.com/mcp"
+  },
+  "authType": "bearer"
+}
+```
+
+```json With OAuth
+{
+  "mcp": {
+    "transport": "http",
+    "url": "https://api.example.com/mcp"
+  },
+  "authType": "oauth",
+  "oauth": {
+    "authorizationUrl": "https://api.example.com/oauth/authorize",
+    "tokenUrl": "https://api.example.com/oauth/token",
+    "clientId": "your-client-id",
+    "scope": "read write"
+  }
+}
+```
+
+```json With Custom Headers
+{
+  "mcp": {
+    "transport": "http",
+    "url": "https://api.example.com/mcp",
+    "headers": {
+      "X-API-Key": "your-api-key",
+      "X-Custom-Header": "value"
+    }
+  },
+  "authType": "none"
+}
+```
+</CodeGroup>
+
+<Warning>
+HTTP transport automatically appends `/mcp` to URLs if not present. If your server uses a different path, include it in the URL.
+</Warning>
+
+### Stdio Transport
+
+For **local MCP servers** that run as subprocesses:
+
+<CodeGroup>
+```json NPX Command
+{
+  "mcp": {
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-brave-search"]
+  },
+  "authType": "none"
+}
+```
+
+```json NPX with Environment
+{
+  "mcp": {
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+    "env": {
+      "BRAVE_API_KEY": "your-api-key"
+    }
+  },
+  "authType": "none"
+}
+```
+
+```json Node Script
+{
+  "mcp": {
+    "transport": "stdio",
+    "command": "node",
+    "args": ["/absolute/path/to/server.js"]
+  },
+  "authType": "none"
+}
+```
+
+```json Python Script
+{
+  "mcp": {
+    "transport": "stdio",
+    "command": "python",
+    "args": ["/absolute/path/to/server.py"]
+  },
+  "authType": "none"
+}
+```
+
+```json Binary Executable
+{
+  "mcp": {
+    "transport": "stdio",
+    "command": "/usr/local/bin/my-mcp-server",
+    "args": ["--config", "/path/to/config.json"]
+  },
+  "authType": "none"
+}
+```
+</CodeGroup>
+
+<Warning>
+**Local MCP Security:**
+- Stdio servers run as subprocesses on your machine
+- Sensitive env vars (API keys, tokens) are filtered automatically
+- Use the `env` field to explicitly pass required variables
+- Always use absolute paths for commands and arguments
+</Warning>
+
+## Popular MCP Servers
+
+Here are some popular MCP servers you can add:
+
+### Brave Search
+
+Web search powered by Brave:
+
+```json brave-search/config.json
+{
+  "id": "brave_a1b2c3d4",
+  "name": "Brave Search",
+  "slug": "brave-search",
+  "provider": "brave",
+  "type": "mcp",
+  "icon": "🦁",
+  "tagline": "Private web search powered by Brave",
+  "mcp": {
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+    "env": {
+      "BRAVE_API_KEY": "your-brave-api-key"
+    }
+  },
+  "authType": "none"
+}
+```
+
+<Note>
+Get your Brave API key at [brave.com/search/api](https://brave.com/search/api)
+</Note>
+
+### Memory Server
+
+Persistent key-value storage:
+
+```json memory/config.json
+{
+  "id": "memory_e5f6g7h8",
+  "name": "Memory",
+  "slug": "memory",
+  "provider": "modelcontextprotocol",
+  "type": "mcp",
+  "icon": "🧠",
+  "tagline": "Persistent key-value storage for agent memory",
+  "mcp": {
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-memory"]
+  },
+  "authType": "none"
+}
+```
+
+### GitHub MCP
+
+Access GitHub repositories:
+
+```json github-mcp/config.json
+{
+  "id": "github_i9j0k1l2",
+  "name": "GitHub",
+  "slug": "github-mcp",
+  "provider": "github",
+  "type": "mcp",
+  "icon": "https://github.githubassets.com/favicons/favicon.png",
+  "tagline": "GitHub repository access via MCP",
+  "mcp": {
+    "transport": "http",
+    "url": "https://api.github.com/mcp"
+  },
+  "authType": "bearer"
+}
+```
+
+## Authentication Types
+
+### No Authentication
+
+For public or local servers:
+
+```json
+{
+  "authType": "none"
+}
+```
+
+### Bearer Token
+
+For API key or bearer token authentication:
+
+```json
+{
+  "authType": "bearer"
+}
+```
+
+After creating the source, trigger credential prompt:
+
+```javascript
+mcp__session__source_credential_prompt({
+  sourceSlug: "your-source-slug",
+  mode: "bearer"
+})
+```
+
+### OAuth 2.0
+
+For services using OAuth:
+
+```json
+{
+  "authType": "oauth",
+  "oauth": {
+    "authorizationUrl": "https://api.example.com/oauth/authorize",
+    "tokenUrl": "https://api.example.com/oauth/token",
+    "clientId": "your-client-id",
+    "clientSecret": "your-client-secret",  // Optional
+    "scope": "read write"
+  }
+}
+```
+
+Trigger OAuth flow:
+
+```javascript
+mcp__session__source_oauth_trigger({
+  sourceSlug: "your-source-slug"
+})
+```
+
+## Permissions Configuration
+
+### Explore Mode Safety
+
+Create a `permissions.json` file to define what tools work in Explore mode:
+
+```json permissions.json
+{
+  "allowedMcpPatterns": [
+    {
+      "pattern": "list",
+      "comment": "All list operations are read-only"
+    },
+    {
+      "pattern": "get",
+      "comment": "All get operations are read-only"
+    },
+    {
+      "pattern": "search",
+      "comment": "Search operations are read-only"
+    },
+    {
+      "pattern": "find",
+      "comment": "Find operations are read-only"
+    },
+    {
+      "pattern": "read",
+      "comment": "Read operations are read-only"
+    }
+  ]
+}
+```
+
+<Note>
+Patterns in `permissions.json` are automatically scoped to the source. Writing `"list"` becomes `"mcp__sourceSlug__.*list"` internally.
+</Note>
+
+### Tool Naming Convention
+
+MCP tools are exposed with this format:
+
+```
+mcp__{sourceSlug}__{toolName}
+```
+
+**Example:**
+- Source: `brave-search`
+- Tool: `webSearch`
+- Full name: `mcp__brave-search__webSearch`
+
+## Testing Sources
+
+### Validate Configuration
+
+After creating a source, always test it:
+
+```javascript
+mcp__session__source_test({
+  sourceSlug: "your-source-slug"
+})
+```
+
+This validates:
+- `config.json` schema correctness
+- Icon URL accessibility
+- MCP server connection
+- Tool schema compatibility
+
+### Connection Status
+
+Check if a source is connected:
+
+```
+"Is the Brave Search source connected?"
+```
+
+The agent will check the MCP client pool and report status.
+
+### List Available Tools
+
+After connecting, list available tools:
+
+```
+"What tools does the Memory server provide?"
+```
+
+The agent will list all tools exposed by the MCP server.
+
+## Troubleshooting
+
+### Stdio Server Not Starting
+
+```
+Command not found: npx
+```
+
+**Solutions:**
+1. Install Node.js and npm: `brew install node`
+2. Verify command exists: `which npx`
+3. Use absolute path: `/usr/local/bin/npx`
+
+### Connection Timeout
+
+```
+Timeout: Process did not respond within 30000ms
+```
+
+**Solutions:**
+1. Check if the server is hanging
+2. Verify all dependencies are installed
+3. Increase timeout if needed (not currently configurable)
+4. Check server logs for errors
+
+### Invalid Schema
+
+```
+Server has invalid property names in tool schemas
+```
+
+**Solutions:**
+1. Property names must match: `^[a-zA-Z0-9_.-]{1,64}$`
+2. Contact the MCP server maintainer to fix schemas
+3. This is an Anthropic API requirement, not MCP spec
+
+### Environment Variables Not Passed
+
+```
+Server error: Missing required environment variable
+```
+
+**Solutions:**
+1. Add `env` field to `mcp` config
+2. Explicitly pass required variables
+3. Remember: sensitive vars are filtered by default
+
+## Creating Your Own MCP Server
+
+Want to create a custom MCP server? Here's how:
+
+<Steps>
+  <Step title="Choose a language">
+    Use the official MCP SDK for TypeScript, Python, or Go
+  </Step>
+  <Step title="Implement the protocol">
+    Expose tools via `listTools()` and `callTool(name, args)`
+  </Step>
+  <Step title="Choose transport">
+    Implement stdio (local) or HTTP/SSE (remote) transport
+  </Step>
+  <Step title="Test locally">
+    Add as a stdio source in Craft Agents for testing
+  </Step>
+  <Step title="Deploy (optional)">
+    Deploy as HTTP/SSE server for easier distribution
+  </Step>
+</Steps>
+
+### MCP SDK Resources
+
+- **TypeScript**: [@modelcontextprotocol/sdk](https://www.npmjs.com/package/@modelcontextprotocol/sdk)
+- **Python**: [mcp-python](https://github.com/modelcontextprotocol/python-sdk)
+- **Go**: [mcp-go](https://github.com/modelcontextprotocol/go-sdk)
+- **Documentation**: [modelcontextprotocol.io](https://modelcontextprotocol.io)
+
+## Best Practices
+
+<Steps>
+  <Step title="Always test sources">
+    Use `source_test` after creating any source configuration
+  </Step>
+  <Step title="Document thoroughly">
+    Create detailed `guide.md` files for custom servers
+  </Step>
+  <Step title="Configure permissions">
+    Set up Explore mode permissions for all sources
+  </Step>
+  <Step title="Handle errors gracefully">
+    MCP servers can fail - design workflows with fallbacks
+  </Step>
+  <Step title="Use absolute paths">
+    For stdio transport, always use absolute paths for commands
+  </Step>
+  <Step title="Version pin dependencies">
+    Use `npx -y package@version` for reproducible setups
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="MCP Overview" icon="network-wired" href="/integrations/mcp/overview">
+    Learn more about the Model Context Protocol
+  </Card>
+  <Card title="Craft MCP Server" icon="craft" href="/integrations/mcp/craft-mcp">
+    Explore the Craft MCP server capabilities
+  </Card>
+</CardGroup>

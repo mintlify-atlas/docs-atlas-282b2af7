@@ -1,0 +1,411 @@
+---
+title: Electron App Architecture
+description: Deep dive into Electron's main process, preload scripts, renderer, IPC, and build process
+---
+
+## Electron Multi-Process Architecture
+
+Craft Agents uses Electron's **process isolation model** for security and stability:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Main Process (Node.js)                                       │
+│ - Full system access (filesystem, network, native APIs)     │
+│ - Window management                                          │
+│ - Agent backend orchestration                               │
+│ - IPC handlers                                              │
+└─────────────────────────────────────────────────────────────┘
+            │
+            │ IPC Bridge (contextBridge)
+            ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Renderer Process (Chromium)                                  │
+│ - React UI                                                   │
+│ - No direct Node.js access (sandboxed)                      │
+│ - Communicates via IPC only                                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+<Note>
+  The **preload script** acts as a secure bridge, exposing only whitelisted APIs from the main process to the renderer.
+</Note>
+
+## Directory Structure
+
+```
+apps/electron/
+├── src/
+│   ├── main/          # Main process (Node.js)
+│   │   ├── index.ts   # Entry point
+│   │   ├── ipc.ts     # IPC handlers (4,200+ lines)
+│   │   ├── sessions.ts # Agent backend management
+│   │   ├── window-manager.ts
+│   │   └── ...
+│   ├── preload/       # Context bridge
+│   │   ├── index.ts   # Main preload script
+│   │   └── browser-toolbar.ts
+│   ├── renderer/      # React UI (Vite)
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── hooks/
+│   │   └── main.tsx   # React entry point
+│   └── shared/        # Types shared between processes
+│       └── types.ts   # IPC channel definitions
+├── dist/              # Build output
+│   ├── main.cjs       # Bundled main process
+│   ├── preload.cjs    # Bundled preload
+│   └── renderer/      # Vite build output
+├── package.json
+└── vite.config.ts
+```
+
+## Main Process
+
+The main process is the **backend** of the Electron app. It has full access to Node.js APIs and native OS features.
+
+### Key Responsibilities
+
+<CardGroup cols={2}>
+  <Card title="Window Management" icon="window">
+    Creating and controlling BrowserWindows
+  </Card>
+  <Card title="Agent Orchestration" icon="robot">
+    Managing ClaudeAgent and PiAgent backends
+  </Card>
+  <Card title="IPC Handlers" icon="arrows-left-right">
+    Responding to renderer requests
+  </Card>
+  <Card title="File System" icon="folder">
+    Reading/writing config, sessions, credentials
+  </Card>
+</CardGroup>
+
+### Core Files
+
+| File | Purpose | Key Exports |
+|------|---------|-------------|
+| `index.ts` | App entry point | `app.whenReady()`, lifecycle |
+| `ipc.ts` | IPC handlers | 140+ IPC channel handlers |
+| `sessions.ts` | Agent backend lifecycle | `createSession()`, `sendMessage()` |
+| `window-manager.ts` | Window orchestration | `WindowManager` class |
+| `browser-pane-manager.ts` | Browser automation | CDP integration |
+
+<Accordion title="Why is ipc.ts so large? (4,200 lines)">
+  `ipc.ts` contains **all IPC handlers** for the renderer process. This includes session management, source CRUD, workspace operations, preferences, OAuth flows, and more. It's the entire backend API for the UI.
+
+  Future refactoring may split this into smaller domain-specific modules.
+</Accordion>
+
+### Example: Session Creation Flow
+
+```typescript
+// apps/electron/src/main/sessions.ts
+export async function createSession(
+  workspaceId: string,
+  llmConnectionId: string,
+  options: SessionOptions
+): Promise<Session> {
+  // 1. Resolve backend (Claude vs Pi)
+  const backend = await createBackendFromConnection({
+    connectionId: llmConnectionId,
+    workspaceId,
+  });
+
+  // 2. Load sources (MCP servers, APIs)
+  const sources = await loadWorkspaceSources(workspaceId);
+
+  // 3. Initialize agent
+  await backend.initialize({
+    mcpServers: sources,
+    permissionMode: 'ask',
+    thinkingLevel: 'low',
+  });
+
+  // 4. Persist session metadata
+  const session = await createStoredSession({
+    workspaceId,
+    llmConnectionId,
+    status: 'inbox',
+  });
+
+  return session;
+}
+```
+
+## Preload Scripts
+
+Preload scripts run **before the renderer process loads** and bridge the main and renderer processes securely.
+
+### Context Bridge Pattern
+
+```typescript
+// apps/electron/src/preload/index.ts
+import { contextBridge, ipcRenderer } from 'electron';
+
+// Expose ONLY whitelisted APIs to renderer
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Session management
+  createSession: (workspaceId: string) => 
+    ipcRenderer.invoke('session:create', workspaceId),
+  
+  sendMessage: (sessionId: string, content: string) =>
+    ipcRenderer.invoke('session:sendMessage', sessionId, content),
+  
+  // Event listeners (streaming responses)
+  onSessionEvent: (callback: (event: SessionEvent) => void) => {
+    ipcRenderer.on('session:event', (_, event) => callback(event));
+  },
+});
+```
+
+<Note>
+  The preload script uses `contextBridge.exposeInMainWorld()` to **safely expose** main process functionality without giving the renderer full Node.js access.
+</Note>
+
+### Security Model
+
+<CardGroup cols={2}>
+  <Card title="✅ Allowed" icon="check">
+    Whitelisted IPC channels only
+  </Card>
+  <Card title="❌ Blocked" icon="x">
+    Direct filesystem, require(), exec()
+  </Card>
+</CardGroup>
+
+This prevents malicious code in the renderer (e.g., from a compromised npm package) from accessing the system.
+
+## Renderer Process
+
+The renderer process is the **frontend** - a React app running in Chromium. It's sandboxed and communicates with the main process via IPC.
+
+### Tech Stack
+
+| Technology | Usage |
+|------------|-------|
+| **React 18** | UI framework |
+| **Vite** | Dev server + bundler |
+| **shadcn/ui** | Component library |
+| **Tailwind CSS v4** | Styling |
+| **Jotai** | State management |
+| **TanStack Table** | Data tables |
+
+### Key Directories
+
+```
+renderer/
+├── components/
+│   ├── chat/          # Chat interface
+│   ├── sidebar/       # Workspace/session tree
+│   ├── sources/       # Source management UI
+│   └── ui/            # shadcn/ui components
+├── pages/
+│   ├── AllSessions.tsx
+│   ├── Chat.tsx
+│   └── Settings.tsx
+├── hooks/
+│   ├── useSession.ts
+│   └── useSources.ts
+├── lib/
+│   └── ipc.ts         # Typed IPC client
+└── main.tsx           # React entry point
+```
+
+### Example: Sending a Message
+
+```tsx
+// apps/electron/src/renderer/pages/Chat.tsx
+import { useCallback } from 'react';
+import { ipc } from '@/lib/ipc';
+
+export function Chat({ sessionId }: { sessionId: string }) {
+  const sendMessage = useCallback(async (content: string) => {
+    // Invoke IPC to main process
+    await ipc.sendMessage(sessionId, content);
+  }, [sessionId]);
+
+  return (
+    <ChatInput onSubmit={sendMessage} />
+  );
+}
+```
+
+```typescript
+// apps/electron/src/renderer/lib/ipc.ts
+export const ipc = {
+  sendMessage: (sessionId: string, content: string) => 
+    window.electronAPI.sendMessage(sessionId, content),
+};
+```
+
+## IPC Communication
+
+Electron uses **Inter-Process Communication (IPC)** for renderer ↔ main communication.
+
+### IPC Patterns
+
+<CardGroup cols={2}>
+  <Card title="invoke/handle" icon="arrows-left-right">
+    Request-response (async/await)
+  </Card>
+  <Card title="send/on" icon="arrow-right">
+    One-way messages and events
+  </Card>
+</CardGroup>
+
+### Request-Response Pattern
+
+```typescript
+// Renderer → Main
+const result = await ipcRenderer.invoke('session:create', workspaceId);
+
+// Main handler
+ipcMain.handle('session:create', async (event, workspaceId) => {
+  return await createSession(workspaceId);
+});
+```
+
+### Event Streaming Pattern
+
+```typescript
+// Main → Renderer (streaming agent events)
+window.webContents.send('session:event', {
+  type: 'message:start',
+  sessionId: 'abc',
+});
+
+// Renderer listener
+ipcRenderer.on('session:event', (event, data) => {
+  console.log('Received event:', data);
+});
+```
+
+<Accordion title="How are agent streaming responses handled?">
+  Agent responses stream through the main process:
+
+  1. Agent backend yields events (`for await (const event of agent.chat(...))`)
+  2. Main process forwards events via `webContents.send('session:event', ...)`
+  3. Renderer listens on `ipcRenderer.on('session:event', ...)` and updates UI
+
+  This allows real-time streaming without blocking the UI thread.
+</Accordion>
+
+## Window Management
+
+The `WindowManager` class orchestrates multiple windows:
+
+```typescript
+// apps/electron/src/main/window-manager.ts
+export class WindowManager {
+  private mainWindow: BrowserWindow | null = null;
+  private browserPanes = new Map<string, BrowserWindow>();
+
+  async createMainWindow() {
+    this.mainWindow = new BrowserWindow({
+      width: 1400,
+      height: 900,
+      webPreferences: {
+        preload: join(__dirname, 'preload.cjs'),
+        contextIsolation: true,
+        nodeIntegration: false, // Security best practice
+      },
+    });
+
+    await this.mainWindow.loadFile('dist/renderer/index.html');
+  }
+
+  createBrowserPane(url: string): BrowserWindow {
+    const pane = new BrowserWindow({
+      parent: this.mainWindow,
+      webPreferences: {
+        preload: join(__dirname, 'browser-toolbar-preload.cjs'),
+      },
+    });
+    this.browserPanes.set(url, pane);
+    return pane;
+  }
+}
+```
+
+## Build Process
+
+Craft Agents uses **different bundlers** for different processes:
+
+<CardGroup cols={2}>
+  <Card title="esbuild" icon="zap">
+    Main process and preload (fast, native)
+  </Card>
+  <Card title="Vite" icon="fire">
+    Renderer process (HMR, optimized chunks)
+  </Card>
+</CardGroup>
+
+### Build Scripts
+
+```json
+// apps/electron/package.json
+{
+  "scripts": {
+    "build:main": "esbuild src/main/index.ts --bundle --platform=node --format=cjs --outfile=dist/main.cjs --external:electron",
+    "build:preload": "esbuild src/preload/index.ts --bundle --platform=node --format=cjs --outfile=dist/preload.cjs --external:electron",
+    "build:renderer": "vite build",
+    "build": "bun run build:main && bun run build:preload && bun run build:renderer"
+  }
+}
+```
+
+### Environment Variables
+
+OAuth credentials are **baked into the build** at compile time:
+
+```bash
+# .env file
+MICROSOFT_OAUTH_CLIENT_ID=your-client-id
+SLACK_OAUTH_CLIENT_ID=your-slack-client-id
+SLACK_OAUTH_CLIENT_SECRET=your-slack-client-secret
+```
+
+These are injected via esbuild's `--define` flag:
+
+```bash
+esbuild ... --define:process.env.SLACK_OAUTH_CLIENT_ID=\"${SLACK_OAUTH_CLIENT_ID:-}\"
+```
+
+<Note>
+  Google OAuth credentials are **NOT** baked in. Users provide their own via source configuration.
+</Note>
+
+## Distribution
+
+Electron apps are packaged using platform-specific scripts:
+
+### macOS (DMG)
+
+```bash
+bash scripts/build-dmg.sh arm64   # Apple Silicon
+bash scripts/build-dmg.sh x64     # Intel
+```
+
+### Windows (Installer)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build-win.ps1
+```
+
+Packaged apps include:
+- Bundled main process (main.cjs)
+- Bundled preload scripts
+- Vite-built renderer assets
+- Electron runtime
+- Native dependencies
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Packages" icon="box" href="./packages">
+    Explore @craft-agent/core and @craft-agent/shared
+  </Card>
+  <Card title="Agent Backends" icon="swap" href="./agent-backends">
+    How Claude and Pi SDKs are abstracted
+  </Card>
+</CardGroup>

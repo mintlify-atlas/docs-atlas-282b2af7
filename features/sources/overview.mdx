@@ -1,0 +1,190 @@
+---
+title: 'Sources & Integrations Overview'
+description: 'Connect external data sources to your Craft Agents workspace'
+icon: 'plug'
+---
+
+## What are Sources?
+
+Sources are external data connections that enable your AI agents to interact with APIs, services, and local files. They replace traditional hardcoded integrations with a flexible, workspace-scoped architecture.
+
+<Card title="Three Source Types" icon="layer-group">
+  Sources connect to data through three different mechanisms:
+  - **MCP Servers** - Remote or local Model Context Protocol servers
+  - **API Sources** - REST APIs with automatic authentication
+  - **Local Files** - Filesystem paths, Obsidian vaults, Git repositories
+</Card>
+
+## Storage Location
+
+Sources are stored per workspace in a folder-based structure:
+
+```
+~/.craft-agent/workspaces/{workspaceId}/sources/{sourceSlug}/
+  ├── config.json      # Source configuration and metadata
+  ├── guide.md         # Usage guidelines for the agent
+  └── icon.svg         # Optional source icon (auto-downloaded)
+```
+
+<Note>
+  Each source folder contains all configuration, documentation, and cached data needed for that integration.
+</Note>
+
+## Source Configuration
+
+The `config.json` file defines how to connect to the source:
+
+<CodeGroup>
+```json MCP Source
+{
+  "id": "linear_a1b2c3d4",
+  "name": "Linear",
+  "slug": "linear",
+  "enabled": true,
+  "provider": "linear",
+  "type": "mcp",
+  "mcp": {
+    "transport": "http",
+    "url": "https://mcp.linear.app",
+    "authType": "oauth"
+  },
+  "icon": "🔵",
+  "tagline": "Issue tracking and project management"
+}
+```
+
+```json API Source
+{
+  "id": "gmail_xyz789",
+  "name": "Gmail",
+  "slug": "gmail",
+  "enabled": true,
+  "provider": "google",
+  "type": "api",
+  "api": {
+    "baseUrl": "https://gmail.googleapis.com",
+    "authType": "bearer",
+    "googleService": "gmail"
+  },
+  "isAuthenticated": true,
+  "connectionStatus": "connected"
+}
+```
+
+```json Local Source
+{
+  "id": "notes_def456",
+  "name": "My Notes",
+  "slug": "my-notes",
+  "enabled": true,
+  "provider": "obsidian",
+  "type": "local",
+  "local": {
+    "path": "~/Documents/Obsidian Vault",
+    "format": "obsidian"
+  }
+}
+```
+</CodeGroup>
+
+## Enabling Sources
+
+Sources must be explicitly enabled to be available in agent sessions:
+
+<Steps>
+  <Step title="Check Source Status">
+    View enabled sources in your workspace settings. Disabled sources won't appear in agent context.
+  </Step>
+  
+  <Step title="Enable in Workspace">
+    Toggle the `enabled` field in `config.json` or use the workspace UI.
+  </Step>
+  
+  <Step title="Authenticate if Required">
+    Sources requiring authentication (OAuth, API keys) must be authenticated before use.
+  </Step>
+  
+  <Step title="Test Connection">
+    The agent can test source connections using the `source_test` tool.
+  </Step>
+</Steps>
+
+## Connection Status
+
+Sources track their connection state in `config.json`:
+
+| Status | Description |
+|--------|-------------|
+| `connected` | Source is working and authenticated |
+| `needs_auth` | Source requires authentication |
+| `failed` | Connection failed (see `connectionError`) |
+| `untested` | Connection hasn't been tested yet |
+| `local_disabled` | Stdio source disabled (local MCP servers off) |
+
+<Warning>
+  Only sources with `enabled: true` and valid authentication are available to agents during sessions.
+</Warning>
+
+## Source Guidelines
+
+The `guide.md` file provides usage instructions for the AI agent:
+
+```markdown
+# Linear
+
+## Scope
+Issue tracking, bugs, tasks, sprints, and project management
+
+## Guidelines
+- Always search for existing issues before creating new ones
+- Use specific queries with filters (status, assignee, labels)
+- Check project context before assigning issues
+
+## Context
+Linear is our primary issue tracker. All engineering tasks flow through Linear.
+Team uses weekly sprints with Monday planning meetings.
+
+## Cache
+```json
+{
+  "recentProjects": ["ENG", "DESIGN", "PRODUCT"],
+  "commonLabels": ["bug", "feature", "urgent"]
+}
+```
+```
+
+<Accordion title="Why guide.md?">
+  The guide provides agent-specific context about:
+  - What data is available in this source
+  - How to query it effectively
+  - Team conventions and workflows
+  - Cached metadata to reduce API calls
+</Accordion>
+
+## Source Types Comparison
+
+<CardGroup cols={3}>
+  <Card title="MCP Sources" icon="server" color="#8B5CF6" href="/features/sources/mcp-servers">
+    Full-featured servers with tools, prompts, and resources. Supports HTTP, SSE, and stdio transports.
+  </Card>
+  
+  <Card title="API Sources" icon="code" color="#8B5CF6" href="/features/sources/api-sources">
+    REST APIs with automatic auth injection. OAuth flows for Google, Slack, Microsoft.
+  </Card>
+  
+  <Card title="Local Files" icon="folder" color="#8B5CF6" href="/features/sources/local-files">
+    Direct filesystem access. Obsidian vaults, Git repos, SQLite databases.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure MCP Servers" icon="server" href="/features/sources/mcp-servers">
+    Connect remote or local MCP servers with OAuth or bearer tokens
+  </Card>
+  
+  <Card title="Add API Sources" icon="api" href="/features/sources/api-sources">
+    Integrate REST APIs with built-in OAuth flows
+  </Card>
+</CardGroup>

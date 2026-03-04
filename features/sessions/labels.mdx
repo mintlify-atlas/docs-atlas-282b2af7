@@ -1,0 +1,657 @@
+---
+title: Label System
+description: Organize sessions with hierarchical, multi-value labels and auto-labeling rules
+---
+
+Craft Agents provides a powerful label system for organizing sessions. Unlike statuses (which are exclusive), labels are **additive** - you can apply many labels to a single session. Labels support hierarchy, typed values, and automatic extraction from user messages.
+
+## Overview
+
+Labels enable rich classification of your sessions:
+
+<CardGroup cols={3}>
+  <Card title="Hierarchical" icon="diagram-nested">
+    Organize labels into parent-child trees
+  </Card>
+  <Card title="Multi-Value" icon="tags">
+    Apply multiple labels per session
+  </Card>
+  <Card title="Typed Values" icon="input-text">
+    Store strings, numbers, or dates with labels
+  </Card>
+</CardGroup>
+
+## Label Types
+
+### Boolean Labels (Presence-Only)
+
+Simple tags that indicate a category:
+
+```typescript
+// Session labels array
+['bug', 'frontend', 'urgent']
+```
+
+### Valued Labels
+
+Labels with associated data:
+
+```typescript
+// Session labels array
+['priority::2', 'project::website-redesign', 'due::2026-03-15']
+```
+
+<Note>
+Labels are stored as flat strings using `::` as the separator. The system automatically parses and types values based on the label's `valueType` configuration.
+</Note>
+
+## Default Label Configuration
+
+New workspaces are initialized with organized label groups:
+
+```typescript packages/shared/src/labels/storage.ts
+export function getDefaultLabelConfig(): WorkspaceLabelConfig {
+  return {
+    version: 1,
+    labels: [
+      {
+        id: 'development',
+        name: 'Development',
+        color: { light: '#3B82F6', dark: '#60A5FA' },
+        children: [
+          {
+            id: 'code',
+            name: 'Code',
+            color: { light: '#4F46E5', dark: '#818CF8' },
+          },
+          {
+            id: 'bug',
+            name: 'Bug',
+            color: { light: '#0EA5E9', dark: '#38BDF8' },
+          },
+          {
+            id: 'automation',
+            name: 'Automation',
+            color: { light: '#06B6D4', dark: '#22D3EE' },
+          },
+        ],
+      },
+      {
+        id: 'content',
+        name: 'Content',
+        color: { light: '#8B5CF6', dark: '#A78BFA' },
+        children: [
+          {
+            id: 'writing',
+            name: 'Writing',
+            color: { light: '#7C3AED', dark: '#C4B5FD' },
+          },
+          {
+            id: 'research',
+            name: 'Research',
+            color: { light: '#A855F7', dark: '#C084FC' },
+          },
+          {
+            id: 'design',
+            name: 'Design',
+            color: { light: '#D946EF', dark: '#E879F9' },
+          },
+        ],
+      },
+      {
+        id: 'priority',
+        name: 'Priority',
+        color: { light: '#F59E0B', dark: '#FBBF24' },
+        valueType: 'number',
+      },
+      {
+        id: 'project',
+        name: 'Project',
+        color: 'foreground/50',
+        valueType: 'string',
+      },
+    ],
+  };
+}
+```
+
+<Tabs>
+  <Tab title="Development (Blue Family)">
+    **Parent:** Development (#3B82F6)
+    - **Code** - Code changes and refactoring
+    - **Bug** - Bug fixes and issues
+    - **Automation** - Scripts and workflows
+  </Tab>
+  <Tab title="Content (Purple Family)">
+    **Parent:** Content (#8B5CF6)
+    - **Writing** - Documentation and articles
+    - **Research** - Investigation and analysis
+    - **Design** - UI/UX and visuals
+  </Tab>
+  <Tab title="Valued Labels">
+    - **Priority** (number) - Importance level (1-5)
+    - **Project** (string) - Project name or identifier
+  </Tab>
+</Tabs>
+
+## Label Configuration
+
+### Storage Location
+
+Labels are stored at:
+```
+{workspaceRootPath}/labels/config.json
+```
+
+### Label Properties
+
+```typescript packages/shared/src/labels/types.ts
+export interface LabelConfig {
+  /** Unique ID — simple slug, globally unique across the tree */
+  id: string;
+
+  /** Display name */
+  name: string;
+
+  /** Optional color. Rendered as a colored circle in the UI. */
+  color?: EntityColor;
+
+  /** Child labels forming a sub-tree. Array position = display order. */
+  children?: LabelConfig[];
+
+  /**
+   * Optional value type hint for UI rendering.
+   * Omit for boolean (presence-only) labels.
+   */
+  valueType?: 'string' | 'number' | 'date';
+
+  /**
+   * Auto-label rules: regex patterns that scan user messages
+   * and automatically apply this label with extracted values.
+   */
+  autoRules?: AutoLabelRule[];
+}
+```
+
+## Hierarchical Structure
+
+Labels form a recursive tree:
+
+```typescript
+const labels: LabelConfig[] = [
+  {
+    id: 'development',
+    name: 'Development',
+    children: [
+      {
+        id: 'frontend',
+        name: 'Frontend',
+        children: [
+          { id: 'react', name: 'React' },
+          { id: 'vue', name: 'Vue' },
+        ],
+      },
+      { id: 'backend', name: 'Backend' },
+    ],
+  },
+];
+```
+
+<Note>
+**Array position determines display order** - there's no separate `order` field. Reorder by rearranging array elements.
+</Note>
+
+## Value Types
+
+Labels can store typed values:
+
+### String Values
+
+```typescript
+// Configuration
+{
+  id: 'project',
+  name: 'Project',
+  valueType: 'string'
+}
+
+// Session storage
+['project::website-redesign', 'project::mobile-app']
+```
+
+### Number Values
+
+```typescript
+// Configuration
+{
+  id: 'priority',
+  name: 'Priority',
+  valueType: 'number'
+}
+
+// Session storage
+['priority::1', 'priority::5']
+
+// Parsed value
+const parsed = parseLabel('priority::3');
+// { id: 'priority', rawValue: '3', value: 3 }
+```
+
+### Date Values
+
+```typescript
+// Configuration
+{
+  id: 'due',
+  name: 'Due Date',
+  valueType: 'date'
+}
+
+// Session storage (ISO date format)
+['due::2026-03-15']
+
+// Parsed value
+const parsed = parseLabel('due::2026-03-15');
+// { id: 'due', rawValue: '2026-03-15', value: Date('2026-03-15') }
+```
+
+## CRUD Operations
+
+### Create Label
+
+```typescript packages/shared/src/labels/crud.ts
+import { createLabel } from '@craft-agent/shared/labels';
+
+// Create root-level label
+const label = createLabel(workspaceRootPath, {
+  name: 'Feature',
+  color: 'accent',
+});
+
+// Create nested label
+const child = createLabel(workspaceRootPath, {
+  name: 'TypeScript',
+  color: { light: '#3178C6', dark: '#3178C6' },
+  parentId: 'development',  // Nest under 'development'
+});
+
+// Create valued label
+const valued = createLabel(workspaceRootPath, {
+  name: 'Sprint',
+  color: 'info',
+  valueType: 'number',
+});
+```
+
+### Update Label
+
+```typescript packages/shared/src/labels/crud.ts
+import { updateLabel } from '@craft-agent/shared/labels';
+
+// Update name and color
+const updated = updateLabel(workspaceRootPath, 'bug', {
+  name: 'Bug Fix',
+  color: { light: '#DC2626', dark: '#EF4444' },
+});
+
+// Change to valued label
+const withValue = updateLabel(workspaceRootPath, 'priority', {
+  valueType: 'number',
+});
+
+// Remove value type (convert to boolean)
+const boolean = updateLabel(workspaceRootPath, 'priority', {
+  valueType: undefined,
+});
+```
+
+### Delete Label
+
+```typescript packages/shared/src/labels/crud.ts
+import { deleteLabel } from '@craft-agent/shared/labels';
+
+// Delete label and all children
+const result = deleteLabel(workspaceRootPath, 'development');
+
+console.log(`Stripped from ${result.stripped} sessions`);
+// Automatically removes 'development', 'code', 'bug', 'automation'
+// from all sessions that referenced them
+```
+
+<Warning>
+Deleting a parent label also deletes all its children and strips them from all sessions. This operation cannot be undone.
+</Warning>
+
+### Move Label
+
+```typescript packages/shared/src/labels/crud.ts
+import { moveLabel } from '@craft-agent/shared/labels';
+
+// Move to different parent
+moveLabel(workspaceRootPath, 'react', 'frontend');
+
+// Move to root level
+moveLabel(workspaceRootPath, 'bug', null);
+
+// Cannot move into own descendant (prevents cycles)
+try {
+  moveLabel(workspaceRootPath, 'development', 'frontend');
+} catch (error) {
+  console.error(error);  // Cannot move into descendant
+}
+```
+
+### Reorder Labels
+
+```typescript packages/shared/src/labels/crud.ts
+import { reorderLabels } from '@craft-agent/shared/labels';
+
+// Reorder root-level labels
+reorderLabels(workspaceRootPath, null, [
+  'priority',
+  'project',
+  'development',
+  'content',
+]);
+
+// Reorder children of a parent
+reorderLabels(workspaceRootPath, 'development', [
+  'bug',
+  'code',
+  'automation',
+]);
+```
+
+## Auto-Labeling
+
+Labels can include regex rules that automatically extract values from user messages:
+
+### Auto-Label Rules
+
+```typescript packages/shared/src/labels/types.ts
+export interface AutoLabelRule {
+  /** Regex pattern with capture groups for value extraction */
+  pattern: string;
+  /** Regex flags (default: 'gi' for global, case-insensitive) */
+  flags?: string;
+  /** Template for the label value using $1, $2, etc. */
+  valueTemplate?: string;
+  /** Human-readable description of what this rule matches */
+  description?: string;
+}
+```
+
+### Example: GitHub Issue Auto-Labeling
+
+```typescript
+const issueLabel: LabelConfig = {
+  id: 'issue',
+  name: 'GitHub Issue',
+  color: { light: '#2DA44E', dark: '#3FB950' },
+  valueType: 'string',
+  autoRules: [
+    {
+      // Match GitHub URLs: https://github.com/owner/repo/issues/123
+      pattern: 'https://github\\.com/[^/]+/[^/]+/issues/(\\d+)',
+      valueTemplate: '$1',
+      description: 'Extract issue number from GitHub URL',
+    },
+    {
+      // Match bare references: #123
+      pattern: '#(\\d+)',
+      valueTemplate: '$1',
+      description: 'Extract issue number from #123 format',
+    },
+  ],
+};
+```
+
+### Example: Priority Auto-Labeling
+
+```typescript
+const priorityLabel: LabelConfig = {
+  id: 'priority',
+  name: 'Priority',
+  color: { light: '#F59E0B', dark: '#FBBF24' },
+  valueType: 'number',
+  autoRules: [
+    {
+      // Match "priority: 2" or "P2" or "pri:3"
+      pattern: '(?:priority|pri|p)\\s*[:]?\\s*(\\d+)',
+      flags: 'gi',
+      valueTemplate: '$1',
+      description: 'Extract priority number',
+    },
+  ],
+};
+```
+
+### Evaluation Flow
+
+<Steps>
+  <Step title="Strip Code Blocks">
+    Remove fenced and inline code to avoid matching inside examples
+  </Step>
+  <Step title="Collect Rules">
+    Walk the label tree and collect all labels with `autoRules`
+  </Step>
+  <Step title="Run Regex">
+    Execute each pattern with forced 'g' flag for global matching
+  </Step>
+  <Step title="Substitute Capture Groups">
+    Replace $1, $2, etc. in `valueTemplate` with captured text
+  </Step>
+  <Step title="Normalize Values">
+    Convert to typed values based on `valueType` (string/number/date)
+  </Step>
+  <Step title="Deduplicate">
+    Remove duplicate matches (same label + value)
+  </Step>
+</Steps>
+
+### Code Example
+
+```typescript packages/shared/src/labels/auto/evaluator.ts
+export function evaluateAutoLabels(
+  message: string,
+  labels: LabelConfig[],
+): AutoLabelMatch[] {
+  // Strip code blocks before scanning
+  const cleanMessage = stripCodeBlocks(message);
+
+  const rules = collectAutoLabelRules(labels);
+  const matches: AutoLabelMatch[] = [];
+  const seen = new Set<string>();
+
+  for (const { label, rule } of rules) {
+    // Stop if we've hit the match limit (10 per message)
+    if (matches.length >= MAX_MATCHES_PER_MESSAGE) break;
+
+    const ruleMatches = evaluateRegexRule(cleanMessage, label, rule);
+
+    // Deduplicate and add to results
+    for (const match of ruleMatches) {
+      if (matches.length >= MAX_MATCHES_PER_MESSAGE) break;
+
+      const key = `${match.labelId}::${match.value}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        matches.push(match);
+      }
+    }
+  }
+
+  return matches;
+}
+```
+
+<Warning>
+Auto-labeling is capped at **10 matches per message** to prevent label explosion from pasted logs or large data dumps.
+</Warning>
+
+## Filtering & Search
+
+### Filter Sessions by Label
+
+```typescript
+import { listActiveSessions } from '@craft-agent/shared/sessions';
+import { extractLabelId } from '@craft-agent/shared/labels';
+
+// Sessions with 'bug' label (any value)
+const bugSessions = listActiveSessions(workspaceRootPath)
+  .filter(s => s.labels?.some(entry => extractLabelId(entry) === 'bug'));
+
+// Sessions with priority >= 3
+const highPriority = listActiveSessions(workspaceRootPath)
+  .filter(s => {
+    const priorityLabel = s.labels?.find(entry => extractLabelId(entry) === 'priority');
+    if (!priorityLabel) return false;
+    const parsed = parseLabel(priorityLabel);
+    return typeof parsed.value === 'number' && parsed.value >= 3;
+  });
+```
+
+### Parse Label Values
+
+```typescript packages/shared/src/labels/values.ts
+import { parseLabel, extractLabelId } from '@craft-agent/shared/labels';
+
+// Boolean label
+const parsed1 = parseLabel('bug');
+// { id: 'bug', rawValue: undefined, value: undefined }
+
+// Number label
+const parsed2 = parseLabel('priority::3');
+// { id: 'priority', rawValue: '3', value: 3 }
+
+// String label
+const parsed3 = parseLabel('project::website-redesign');
+// { id: 'project', rawValue: 'website-redesign', value: 'website-redesign' }
+
+// Date label
+const parsed4 = parseLabel('due::2026-03-15');
+// { id: 'due', rawValue: '2026-03-15', value: Date('2026-03-15') }
+
+// Extract just the ID
+const id = extractLabelId('priority::3');
+// 'priority'
+```
+
+## Tree Utilities
+
+```typescript packages/shared/src/labels/tree.ts
+import {
+  flattenLabels,
+  findLabelById,
+  collectAllIds,
+  getDescendantIds,
+} from '@craft-agent/shared/labels';
+
+// Flatten tree to list (depth-first)
+const flat = flattenLabels(labels);
+
+// Find label by ID (searches entire tree)
+const label = findLabelById(labels, 'react');
+
+// Collect all IDs (for uniqueness checking)
+const allIds = collectAllIds(labels);
+
+// Get all descendant IDs of a label
+const descendants = getDescendantIds(labels, 'development');
+// ['code', 'bug', 'automation']
+```
+
+## UI Workflows
+
+Typical user interactions in the Craft Agents SaaS:
+
+<Tabs>
+  <Tab title="Apply Labels">
+    **During Session Creation**
+    - Auto-labels extracted from first message
+    - User can add/remove labels manually
+    - Label picker shows hierarchical tree
+    - Recent labels appear at top
+  </Tab>
+  <Tab title="Edit Labels">
+    **Session Detail View**
+    - Click label chips to remove
+    - Click "+" button to add more
+    - Typeahead search by name
+    - Navigate tree with keyboard
+  </Tab>
+  <Tab title="Filter by Labels">
+    **Session List View**
+    - Multi-select label filter in sidebar
+    - Shows label colors as dots
+    - "OR" logic (any matching label)
+    - Combines with status filter
+  </Tab>
+</Tabs>
+
+## Storage Format
+
+Labels are stored as flat string arrays on sessions:
+
+```typescript packages/shared/src/sessions/types.ts
+export interface SessionConfig {
+  /** Labels applied to this session (bare IDs or "id::value" entries) */
+  labels?: string[];
+}
+```
+
+**Example:**
+```json
+{
+  "id": "260304-swift-river",
+  "labels": [
+    "bug",
+    "frontend",
+    "priority::2",
+    "project::website-redesign",
+    "due::2026-03-15"
+  ]
+}
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Use Hierarchy for Related Labels">
+    Group related labels under parent categories (Development → Code, Bug, Automation)
+  </Step>
+  <Step title="Combine Boolean and Valued Labels">
+    Use boolean for categories (bug, feature) and valued for metadata (priority, project)
+  </Step>
+  <Step title="Configure Auto-Labeling for Common Patterns">
+    Extract issue numbers, ticket IDs, and priorities automatically from messages
+  </Step>
+  <Step title="Use System Colors for Consistency">
+    Reference theme colors instead of hard-coding hex values
+  </Step>
+  <Step title="Keep the Tree Shallow">
+    Aim for 2-3 levels max. Deeper nesting becomes hard to navigate.
+  </Step>
+</Steps>
+
+## Performance Considerations
+
+<Note>
+Auto-label evaluation runs **on every user message**. Keep regex patterns efficient and limit the number of rules per label.
+</Note>
+
+- **Code block stripping** prevents false matches in code examples
+- **10-match cap** prevents label explosion from large pastes
+- **Deduplication** ensures each label+value combination appears once
+- **Tree flattening** is cached during storage load
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Session Overview" icon="circle-nodes" href="/features/sessions/overview">
+    Learn about session persistence and storage
+  </Card>
+  <Card title="Status System" icon="circle-dot" href="/features/sessions/statuses">
+    Understand exclusive status vs additive labels
+  </Card>
+</CardGroup>

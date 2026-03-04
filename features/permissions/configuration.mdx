@@ -1,0 +1,577 @@
+---
+title: 'Permissions Configuration'
+description: 'Customize safety rules with permissions.json at workspace and source levels'
+icon: 'file-code'
+---
+
+## Overview
+
+Craft Agents uses **permissions.json** files to customize what the agent can do in Explore mode. Rules are defined at multiple levels and **merged additively** to create the final permission set.
+
+<Note>
+  Permissions are **additive** — custom configs extend defaults, making rules more permissive. You cannot restrict below the app defaults.
+</Note>
+
+## Configuration Levels
+
+Permissions are loaded from three locations in order:
+
+<Steps>
+  <Step title="App Defaults">
+    `~/.craft-agent/permissions/default.json`
+    
+    Bundled patterns for common commands (git, ls, cat, etc.). Auto-synced on app updates.
+  </Step>
+  
+  <Step title="Workspace Overrides">
+    `~/.craft-agent/workspaces/{id}/permissions.json`
+    
+    Workspace-specific rules that apply to all sessions in this workspace.
+  </Step>
+  
+  <Step title="Source Overrides">
+    `~/.craft-agent/workspaces/{id}/sources/{slug}/permissions.json`
+    
+    Per-source rules for specific MCP servers or API integrations.
+  </Step>
+</Steps>
+
+### Merging Strategy
+
+```typescript
+// From permissions-config.ts
+function buildMergedConfig(context: PermissionsContext): MergedPermissionsConfig {
+  // Start with hardcoded defaults
+  const merged = { ...SAFE_MODE_CONFIG };
+  
+  // Load and apply app defaults
+  const appDefaults = loadDefaultPermissions();
+  if (appDefaults) applyDefaultConfig(merged, appDefaults);
+  
+  // Add workspace customizations
+  const workspace = loadWorkspacePermissions(context.workspaceRootPath);
+  if (workspace) applyCustomConfig(merged, workspace);
+  
+  // Add source customizations (with auto-scoping)
+  for (const sourceSlug of context.activeSourceSlugs) {
+    const source = loadSourcePermissions(context.workspaceRootPath, sourceSlug);
+    if (source) applySourceConfig(merged, source, sourceSlug);
+  }
+  
+  return merged;
+}
+```
+
+## File Format
+
+### Schema
+
+```typescript
+// From mode-types.ts
+export interface PermissionsConfigFile {
+  version?: string;                    // ISO date: "2026-03-04"
+  allowedBashPatterns?: Pattern[];     // Regex for bash commands
+  allowedMcpPatterns?: Pattern[];      // Regex for MCP tool names
+  allowedApiEndpoints?: ApiEndpointRule[]; // Method + path rules
+  allowedWritePaths?: Pattern[];       // Glob patterns for writable paths
+  blockedTools?: Pattern[];            // Additional tools to block
+}
+
+type Pattern = string | { pattern: string; comment?: string };
+
+interface ApiEndpointRule {
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
+  path: string;        // Regex for API path
+  comment?: string;
+}
+```
+
+### Example Configuration
+
+```json
+{
+  "version": "2026-03-04",
+  "allowedBashPatterns": [
+    {
+      "pattern": "^git\\s+(status|log|diff|show|branch|remote)\\b",
+      "comment": "Git read-only operations"
+    },
+    {
+      "pattern": "^npm\\s+list\\b",
+      "comment": "List installed packages"
+    },
+    "^pwd\\b"
+  ],
+  "allowedMcpPatterns": [
+    "^list",
+    "^get",
+    "^search"
+  ],
+  "allowedApiEndpoints": [
+    {
+      "method": "POST",
+      "path": "^/v1/issues$",
+      "comment": "Create issues"
+    },
+    {
+      "method": "PATCH",
+      "path": "^/v1/issues/[^/]+$",
+      "comment": "Update issues"
+    }
+  ],
+  "allowedWritePaths": [
+    "~/workspace/docs/**/*.md",
+    "/tmp/**"
+  ]
+}
+```
+
+<Warning>
+  All regex patterns must be **valid JavaScript regex**. Invalid patterns are silently skipped with a warning in logs.
+</Warning>
+
+## Rule Types
+
+### 1. Allowed Bash Patterns
+
+Regex patterns for bash commands that are safe to run in Explore mode.
+
+<ParamField path="allowedBashPatterns" type="Pattern[]">
+  Array of regex patterns matching safe bash commands
+</ParamField>
+
+**Pattern matching:**
+
+```typescript
+// From mode-manager.ts
+function isReadOnlyBashCommand(command: string): boolean {
+  // 1. Check for dangerous control characters
+  if (hasDangerousControlChars(command)) return false;
+  
+  // 2. Parse with AST-based validator
+  const astResult = validateBashCommand(command, patterns);
+  if (!astResult.allowed) return false;
+  
+  // 3. For compound commands, validate each part
+  // "git status && git log" → validate ["git status", "git log"]
+  
+  return true;
+}
+```
+
+**Example patterns:**
+
+```json
+[
+  "^git\\s+(status|log|diff|show)\\b",
+  "^ls\\b(?!.*>).*",  // ls without redirect
+  "^cat\\s+[^|>]+$",   // cat without pipes/redirects
+  "^npm\\s+(list|view|info)\\b",
+  "^docker\\s+ps\\b"
+]
+```
+
+### 2. Allowed MCP Patterns
+
+Regex patterns for MCP tool names that are allowed in Explore mode.
+
+<ParamField path="allowedMcpPatterns" type="Pattern[]">
+  Array of regex patterns matching MCP tool names
+</ParamField>
+
+**How it works:**
+
+MCP tools are named `mcp__<sourceSlug>__<toolName>`. Patterns match against the full name.
+
+```typescript
+// Workspace-level pattern
+"^list"  // Matches: mcp__linear__list, mcp__github__listIssues
+
+// Source-level pattern (auto-scoped)
+"list"   // User writes this
+"mcp__linear__.*list"  // System converts to this
+```
+
+<Note>
+  **Source-level MCP patterns are automatically scoped** to prevent cross-source leakage. A pattern in `sources/linear/permissions.json` only affects Linear tools.
+</Note>
+
+### 3. Allowed API Endpoints
+
+Fine-grained rules for API requests beyond GET (which is always allowed).
+
+<ParamField path="allowedApiEndpoints" type="ApiEndpointRule[]">
+  Array of method + path patterns for allowed API calls
+</ParamField>
+
+**Endpoint rule structure:**
+
+```typescript
+{
+  method: 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS',
+  path: string,     // Regex matching request path
+  comment?: string  // Human-readable description
+}
+```
+
+**Example rules:**
+
+```json
+[
+  {
+    "method": "POST",
+    "path": "^/v1/comments$",
+    "comment": "Create comments on issues"
+  },
+  {
+    "method": "PATCH",
+    "path": "^/v1/issues/[a-z0-9-]+$",
+    "comment": "Update specific issues"
+  },
+  {
+    "method": "DELETE",
+    "path": "^/v1/drafts/[a-z0-9-]+$",
+    "comment": "Delete draft items"
+  }
+]
+```
+
+### 4. Allowed Write Paths
+
+Glob patterns defining which directories/files can be written in Explore mode.
+
+<ParamField path="allowedWritePaths" type="Pattern[]">
+  Array of glob patterns for writable paths
+</ParamField>
+
+**Supported glob syntax:**
+
+- `*` — Matches any characters except `/`
+- `**` — Matches any characters including `/` (recursive)
+- `?` — Matches single character
+- `~` — Expands to home directory
+
+**Example patterns:**
+
+```json
+[
+  "~/workspace/docs/**/*.md",        // All markdown in docs/
+  "~/workspace/test/**",             // Entire test directory
+  "/tmp/**",                          // System temp directory
+  "~/.craft-agent/workspaces/*/sessions/*.json"  // Session files
+]
+```
+
+**Implementation:**
+
+```typescript
+// From mode-manager.ts
+function matchesAllowedWritePath(filePath: string, allowedPaths: string[]): boolean {
+  const normalized = normalizeForComparison(expandHome(filePath));
+  
+  for (const pattern of allowedPaths) {
+    const regex = globToRegex(pattern);
+    if (regex.test(normalized)) return true;
+  }
+  
+  return false;
+}
+```
+
+<Warning>
+  Write paths bypass the hardcoded Write/Edit tool block. Use carefully to avoid unintended file modifications.
+</Warning>
+
+### 5. Blocked Tools
+
+Additional tools to block beyond the hardcoded defaults.
+
+<ParamField path="blockedTools" type="Pattern[]">
+  Array of tool name patterns to block
+</ParamField>
+
+**Hardcoded blocked tools (cannot be overridden):**
+
+```typescript
+// From mode-types.ts
+const BLOCKED_TOOLS = new Set([
+  'Write',
+  'Edit', 
+  'MultiEdit',
+  'NotebookEdit'
+]);
+```
+
+**Example additional blocks:**
+
+```json
+[
+  "^mcp__docker__",      // Block all Docker MCP tools
+  "^mcp__.*__delete",    // Block delete operations across sources
+  "Bash"                 // Block bash tool entirely (strict mode)
+]
+```
+
+## Creating Workspace Permissions
+
+<Steps>
+  <Step title="Create file">
+    ```bash
+    touch ~/.craft-agent/workspaces/{your-workspace-id}/permissions.json
+    ```
+  </Step>
+  
+  <Step title="Add rules">
+    ```json
+    {
+      "version": "2026-03-04",
+      "allowedBashPatterns": [
+        "^make\\s+(test|lint)\\b"
+      ],
+      "allowedWritePaths": [
+        "~/workspace/docs/**/*.md"
+      ]
+    }
+    ```
+  </Step>
+  
+  <Step title="Test in Explore mode">
+    Open a session, switch to Explore mode (SHIFT+TAB), and try running:
+    ```bash
+    make test  # Should be allowed
+    make build # Should be blocked
+    ```
+  </Step>
+</Steps>
+
+## Creating Source Permissions
+
+Source-level permissions are useful for allowing specific operations on individual integrations.
+
+<Tabs>
+  <Tab title="Linear Source">
+    **File:** `~/.craft-agent/workspaces/{id}/sources/linear/permissions.json`
+    
+    ```json
+    {
+      "version": "2026-03-04",
+      "allowedMcpPatterns": [
+        "create_issue",
+        "update_issue",
+        "add_comment"
+      ],
+      "allowedApiEndpoints": [
+        {
+          "method": "POST",
+          "path": "^/graphql$",
+          "comment": "GraphQL mutations"
+        }
+      ]
+    }
+    ```
+    
+    <Note>
+      MCP patterns are auto-scoped: `"create_issue"` becomes `"mcp__linear__.*create_issue"`
+    </Note>
+  </Tab>
+  
+  <Tab title="GitHub Source">
+    **File:** `~/.craft-agent/workspaces/{id}/sources/github/permissions.json`
+    
+    ```json
+    {
+      "version": "2026-03-04",
+      "allowedMcpPatterns": [
+        "list_repositories",
+        "get_repository",
+        "create_issue",
+        "list_pull_requests"
+      ],
+      "allowedApiEndpoints": [
+        {
+          "method": "POST",
+          "path": "^/repos/[^/]+/[^/]+/issues$",
+          "comment": "Create issues"
+        },
+        {
+          "method": "PATCH",
+          "path": "^/repos/[^/]+/[^/]+/issues/[0-9]+$",
+          "comment": "Update issues"
+        }
+      ]
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Validation
+
+Validate your permissions.json file before deploying:
+
+```typescript
+import { validatePermissionsConfig } from '@craft-agent/shared/agent';
+import { readFileSync } from 'fs';
+
+const content = readFileSync('permissions.json', 'utf-8');
+const config = JSON.parse(content);
+const errors = validatePermissionsConfig(config);
+
+if (errors.length > 0) {
+  console.error('Validation errors:', errors);
+  // Example: "allowedBashPatterns[2]: Invalid regex pattern: ^git\s+("
+}
+```
+
+**Common validation errors:**
+
+- Invalid regex syntax (unmatched parentheses, invalid escapes)
+- Unknown HTTP methods in API endpoint rules
+- Invalid glob patterns in allowedWritePaths
+
+## Migration
+
+Permissions files use semantic versioning. When app updates include new patterns, they're automatically merged:
+
+```typescript
+// From permissions-config.ts
+function ensureDefaultPermissions(): void {
+  const installed = readPermissionsFile(destPath);
+  const bundled = readPermissionsFile(bundledPath);
+  
+  if (bundled.version > installed.version) {
+    const merged = migratePermissions(installed, bundled);
+    writePermissionsFile(destPath, merged);
+  }
+}
+```
+
+**Migration behavior:**
+
+- New patterns are **added** to your config
+- Existing patterns are **preserved** (no removal)
+- Version is updated to latest
+- User customizations remain intact
+
+<Note>
+  Migrations only affect `~/.craft-agent/permissions/default.json`. Workspace and source configs are never auto-modified.
+</Note>
+
+## Troubleshooting
+
+### Command Blocked in Explore Mode
+
+If a command is unexpectedly blocked:
+
+```bash
+# Error message will show:
+# - What pattern was attempted
+# - Where matching failed
+# - Relevant patterns that might match
+# - Paths to permissions.json files
+```
+
+**Check diagnostics:**
+
+```typescript
+import { getBashRejectionReason } from '@craft-agent/shared/agent';
+
+const reason = getBashRejectionReason('git -C /path status', config);
+console.log(reason);
+// {
+//   type: 'no_safe_pattern',
+//   command: 'git -C /path status',
+//   matchedPrefix: 'git ',
+//   failedAtPosition: 4,
+//   failedToken: '-C',
+//   suggestion: 'Run from within the repo directory instead'
+// }
+```
+
+### Patterns Not Taking Effect
+
+<Steps>
+  <Step title="Check file location">
+    Verify file is in correct directory:
+    - Workspace: `~/.craft-agent/workspaces/{id}/permissions.json`
+    - Source: `~/.craft-agent/workspaces/{id}/sources/{slug}/permissions.json`
+  </Step>
+  
+  <Step title="Validate JSON syntax">
+    ```bash
+    cat permissions.json | jq .
+    ```
+  </Step>
+  
+  <Step title="Check regex escaping">
+    In JSON, backslashes must be double-escaped:
+    ```json
+    "^git\\s+status"  // Correct
+    "^git\s+status"   // Incorrect (invalid escape)
+    ```
+  </Step>
+  
+  <Step title="Restart session">
+    Permissions are cached. Restart the session to reload:
+    ```typescript
+    permissionsConfigCache.invalidateWorkspace(workspaceRootPath);
+    ```
+  </Step>
+</Steps>
+
+## API Reference
+
+### Load Permissions
+
+```typescript
+import { permissionsConfigCache } from '@craft-agent/shared/agent';
+
+const merged = permissionsConfigCache.getMergedConfig({
+  workspaceRootPath: '/path/to/workspace',
+  activeSourceSlugs: ['linear', 'github']
+});
+```
+
+### Invalidate Cache
+
+```typescript
+// Invalidate workspace
+permissionsConfigCache.invalidateWorkspace(workspaceRootPath);
+
+// Invalidate source
+permissionsConfigCache.invalidateSource(workspaceRootPath, 'linear');
+
+// Clear all
+permissionsConfigCache.clear();
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Start Narrow" icon="funnel">
+    Begin with strict patterns and gradually expand based on actual needs.
+  </Card>
+  
+  <Card title="Use Comments" icon="comment">
+    Add comments to patterns to document intent and improve error messages.
+  </Card>
+  
+  <Card title="Test Patterns" icon="vial">
+    Validate regex patterns with an online tester before adding to config.
+  </Card>
+  
+  <Card title="Version Control" icon="code-branch">
+    Commit workspace permissions.json to your repo for team consistency.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Permission Modes" icon="shield" href="/features/permissions/modes">
+    Learn about Explore, Ask, and Execute modes
+  </Card>
+  
+  <Card title="Security Details" icon="lock" href="/features/permissions/security">
+    Understand encryption, OAuth, and security architecture
+  </Card>
+</CardGroup>

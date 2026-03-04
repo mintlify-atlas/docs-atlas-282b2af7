@@ -1,0 +1,524 @@
+---
+title: Dynamic Status System
+description: Customize workflow states with the flexible session status system
+---
+
+Craft Agents provides a fully customizable status system that lets you model your team's unique workflow. Each workspace can define its own set of statuses with custom colors, icons, and categories.
+
+## Overview
+
+Statuses are **exclusive** - each session has exactly one status at a time. They determine:
+
+<CardGroup cols={3}>
+  <Card title="Inbox Visibility" icon="inbox">
+    Whether the session appears in inbox or archive
+  </Card>
+  <Card title="Visual Identity" icon="palette">
+    Color and icon displayed in the UI
+  </Card>
+  <Card title="Workflow State" icon="diagram-project">
+    Where the session is in your process
+  </Card>
+</CardGroup>
+
+## Default Statuses
+
+New workspaces are initialized with five default statuses:
+
+<Tabs>
+  <Tab title="Visual Reference">
+    | Status | Icon | Color | Category | Description |
+    |--------|------|-------|----------|-------------|
+    | **Backlog** | ○ (dashed) | Muted | Open | Not yet planned |
+    | **Todo** | ○ (solid) | Muted | Open | Ready to work on |
+    | **Needs Review** | ◉ (dot center) | Amber | Open | Attention required |
+    | **Done** | ● (checkmark) | Purple | Closed | Completed |
+    | **Cancelled** | ● (X) | Muted | Closed | Terminated |
+  </Tab>
+  <Tab title="Code Definition">
+    ```typescript packages/shared/src/statuses/storage.ts
+    export function getDefaultStatusConfig(): WorkspaceStatusConfig {
+      return {
+        version: 1,
+        statuses: [
+          {
+            id: 'backlog',
+            label: 'Backlog',
+            category: 'open',
+            isFixed: false,
+            isDefault: true,
+            order: 0,
+          },
+          {
+            id: 'todo',
+            label: 'Todo',
+            category: 'open',
+            isFixed: true,  // Cannot be deleted
+            isDefault: false,
+            order: 1,
+          },
+          {
+            id: 'needs-review',
+            label: 'Needs Review',
+            category: 'open',
+            isFixed: false,
+            isDefault: true,
+            order: 2,
+          },
+          {
+            id: 'done',
+            label: 'Done',
+            category: 'closed',
+            isFixed: true,  // Cannot be deleted
+            isDefault: false,
+            order: 3,
+          },
+          {
+            id: 'cancelled',
+            label: 'Cancelled',
+            category: 'closed',
+            isFixed: true,  // Cannot be deleted
+            isDefault: false,
+            order: 4,
+          },
+        ],
+        defaultStatusId: 'todo',
+      };
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Note>
+**Fixed statuses** (todo, done, cancelled) cannot be deleted but can be customized. **Default statuses** can be modified or deleted.
+</Note>
+
+## Status Configuration
+
+### Storage Location
+
+Statuses are stored at:
+```
+{workspaceRootPath}/statuses/config.json
+```
+
+Icons are stored at:
+```
+{workspaceRootPath}/statuses/icons/{statusId}.svg
+```
+
+### Status Properties
+
+```typescript packages/shared/src/statuses/types.ts
+export interface StatusConfig {
+  /** Unique ID (slug-style: 'todo', 'in-progress', 'my-custom-status') */
+  id: string;
+
+  /** Display name */
+  label: string;
+
+  /** Optional color. If omitted, uses design system defaults. */
+  color?: EntityColor;
+
+  /**
+   * Icon: emoji or URL (auto-downloaded)
+   * - Emoji: "✅", "🔥" - rendered as text
+   * - URL: "https://..." - auto-downloaded to statuses/icons/{id}.{ext}
+   * - Omit to use auto-discovered local file (statuses/icons/{id}.svg)
+   */
+  icon?: string;
+
+  /** Category (open = inbox, closed = archive) */
+  category: StatusCategory;
+
+  /** If true, cannot be deleted/renamed (todo, done, cancelled) */
+  isFixed: boolean;
+
+  /** If true, can be modified but not deleted (in-progress, needs-review) */
+  isDefault: boolean;
+
+  /** Display order in UI (lower = first) */
+  order: number;
+}
+```
+
+## Status Categories
+
+Each status has a **category** that determines inbox vs archive behavior:
+
+<Tabs>
+  <Tab title="Open Category">
+    **Sessions appear in the inbox**
+
+    Use for active work states:
+    - Planning stages (backlog, todo)
+    - In-progress work (in-progress, blocked)
+    - Review states (needs-review, testing)
+
+    ```typescript
+    const category: StatusCategory = 'open';
+    ```
+  </Tab>
+  <Tab title="Closed Category">
+    **Sessions appear in the archive**
+
+    Use for terminal states:
+    - Successful completion (done, shipped)
+    - Abandonment (cancelled, wontfix)
+    - Permanent blocks (duplicate, invalid)
+
+    ```typescript
+    const category: StatusCategory = 'closed';
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+Changing a status's category will immediately move all sessions using that status between inbox and archive.
+</Warning>
+
+## Color System
+
+Statuses support two color formats:
+
+### System Colors (Recommended)
+
+Reference theme colors for automatic light/dark mode:
+
+```typescript
+import type { EntityColor } from '@craft-agent/shared/colors';
+
+const color: EntityColor = 'accent';           // Full intensity
+const color: EntityColor = 'foreground/50';    // 50% opacity
+const color: EntityColor = 'info/80';          // 80% opacity
+```
+
+**Available system colors:**
+- `accent` - Primary brand color (purple: #8B5CF6)
+- `foreground` - Text color (adapts to light/dark)
+- `info` - Warning/attention (amber)
+- `success` - Success states (green)
+- `destructive` - Error states (red)
+
+### Custom Colors
+
+Explicit hex values for light and dark modes:
+
+```typescript
+const color: EntityColor = {
+  light: '#EF4444',  // Red for light mode
+  dark: '#F87171'    // Lighter red for dark mode
+};
+```
+
+<Note>
+System colors are preferred for consistency with the design system and automatic theme adaptation.
+</Note>
+
+## Icon System
+
+Statuses can display icons in three ways:
+
+<Steps>
+  <Step title="Local SVG Files (Recommended)">
+    Place custom SVG files at `statuses/icons/{statusId}.svg`
+    
+    ```svg
+    <!-- statuses/icons/in-progress.svg -->
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="9" fill="currentColor" />
+    </svg>
+    ```
+  </Step>
+  <Step title="Emoji">
+    Set the `icon` field to an emoji character
+    
+    ```typescript
+    { icon: '🔥' }
+    { icon: '✅' }
+    ```
+  </Step>
+  <Step title="URL (Auto-Downloaded)">
+    Provide a URL and Craft Agents will download and cache it
+    
+    ```typescript
+    {
+      icon: 'https://example.com/icons/status.svg'
+    }
+    ```
+  </Step>
+</Steps>
+
+### Default Icons
+
+Default statuses include embedded SVG icons:
+
+```typescript packages/shared/src/statuses/default-icons.ts
+export const DEFAULT_ICON_SVGS: Record<string, string> = {
+  /**
+   * Backlog - CircleDashed (larger gaps)
+   */
+  'backlog': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-dasharray="6 5" />
+  </svg>`,
+
+  /**
+   * Todo - Circle (solid outline)
+   */
+  'todo': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" stroke="currentColor" />
+  </svg>`,
+
+  // ... more icons ...
+};
+```
+
+## CRUD Operations
+
+### Create Status
+
+```typescript packages/shared/src/statuses/crud.ts
+import { createStatus } from '@craft-agent/shared/statuses';
+
+const status = createStatus(workspaceRootPath, {
+  label: 'In Progress',
+  color: 'accent',
+  icon: '🚀',
+  category: 'open'
+});
+
+// Returns:
+// {
+//   id: 'in-progress',     // Auto-generated slug
+//   label: 'In Progress',
+//   color: 'accent',
+//   icon: '🚀',
+//   category: 'open',
+//   isFixed: false,
+//   isDefault: false,
+//   order: 5
+// }
+```
+
+### Update Status
+
+```typescript packages/shared/src/statuses/crud.ts
+import { updateStatus } from '@craft-agent/shared/statuses';
+
+// Update label and color
+const updated = updateStatus(workspaceRootPath, 'in-progress', {
+  label: 'Active',
+  color: { light: '#3B82F6', dark: '#60A5FA' }
+});
+
+// Fixed statuses cannot change category
+try {
+  updateStatus(workspaceRootPath, 'todo', {
+    category: 'closed'  // ERROR: Cannot change category of fixed status
+  });
+} catch (error) {
+  console.error(error);
+}
+```
+
+### Delete Status
+
+```typescript packages/shared/src/statuses/crud.ts
+import { deleteStatus } from '@craft-agent/shared/statuses';
+
+// Delete a custom status
+const result = deleteStatus(workspaceRootPath, 'in-progress');
+
+console.log(`Migrated ${result.migrated} sessions to 'todo'`);
+
+// Cannot delete fixed statuses
+try {
+  deleteStatus(workspaceRootPath, 'todo');
+} catch (error) {
+  console.error(error);  // Cannot delete fixed status 'todo'
+}
+```
+
+<Warning>
+Deleting a status automatically migrates all sessions using it to 'todo'. This operation cannot be undone.
+</Warning>
+
+### Reorder Statuses
+
+```typescript packages/shared/src/statuses/crud.ts
+import { reorderStatuses } from '@craft-agent/shared/statuses';
+
+// Reorder by providing full list of IDs in desired order
+reorderStatuses(workspaceRootPath, [
+  'backlog',
+  'todo',
+  'in-progress',
+  'needs-review',
+  'done',
+  'cancelled'
+]);
+```
+
+## Loading Statuses
+
+### Load Full Configuration
+
+```typescript packages/shared/src/statuses/storage.ts
+import { loadStatusConfig } from '@craft-agent/shared/statuses';
+
+const config = loadStatusConfig(workspaceRootPath);
+
+console.log(config);
+// {
+//   version: 1,
+//   statuses: [...],
+//   defaultStatusId: 'todo'
+// }
+```
+
+### List All Statuses
+
+```typescript packages/shared/src/statuses/storage.ts
+import { listStatuses } from '@craft-agent/shared/statuses';
+
+const statuses = listStatuses(workspaceRootPath);
+// Returns StatusConfig[] sorted by order field
+```
+
+### Get Single Status
+
+```typescript packages/shared/src/statuses/storage.ts
+import { getStatus, getStatusCategory } from '@craft-agent/shared/statuses';
+
+const status = getStatus(workspaceRootPath, 'in-progress');
+if (status) {
+  console.log(status.label, status.category);
+}
+
+// Get just the category
+const category = getStatusCategory(workspaceRootPath, 'done');
+// Returns: 'closed'
+```
+
+## Validation
+
+### Validate Status ID
+
+```typescript packages/shared/src/statuses/validation.ts
+import { validateSessionStatus } from '@craft-agent/shared/statuses';
+
+// Returns valid status ID or fallback
+const validStatus = validateSessionStatus(
+  workspaceRootPath,
+  'in-progress'  // User-provided status
+);
+
+// If 'in-progress' doesn't exist, returns 'todo'
+if (validStatus !== 'in-progress') {
+  console.warn('Invalid status, using fallback:', validStatus);
+}
+```
+
+<Note>
+Status validation automatically falls back to 'todo' if the requested status doesn't exist. This prevents crashes when loading sessions with deleted statuses.
+</Note>
+
+## Migration Protection
+
+When sessions are loaded, their status is automatically validated:
+
+```typescript packages/shared/src/sessions/storage.ts
+function headerToMetadata(
+  header: SessionHeader,
+  workspaceRootPath: string
+): SessionMetadata | null {
+  // Validate sessionStatus against workspace status config
+  const validatedStatus = validateSessionStatus(
+    workspaceRootPath,
+    rawStatus
+  );
+  
+  return {
+    ...header,
+    sessionStatus: validatedStatus,  // Guaranteed valid or 'todo'
+  };
+}
+```
+
+This ensures:
+- Sessions with deleted statuses fall back to 'todo'
+- No crashes when switching between workspaces
+- Graceful handling of config sync issues
+
+## Custom Workflow Examples
+
+### Software Development
+
+```typescript
+const statuses = [
+  { id: 'backlog', label: 'Backlog', category: 'open' },
+  { id: 'todo', label: 'Todo', category: 'open' },
+  { id: 'in-progress', label: 'In Progress', category: 'open' },
+  { id: 'code-review', label: 'Code Review', category: 'open' },
+  { id: 'testing', label: 'Testing', category: 'open' },
+  { id: 'deployed', label: 'Deployed', category: 'closed' },
+  { id: 'cancelled', label: 'Cancelled', category: 'closed' },
+];
+```
+
+### Content Production
+
+```typescript
+const statuses = [
+  { id: 'ideas', label: 'Ideas', category: 'open' },
+  { id: 'drafting', label: 'Drafting', category: 'open' },
+  { id: 'editing', label: 'Editing', category: 'open' },
+  { id: 'review', label: 'Review', category: 'open' },
+  { id: 'published', label: 'Published', category: 'closed' },
+  { id: 'archived', label: 'Archived', category: 'closed' },
+];
+```
+
+### Research
+
+```typescript
+const statuses = [
+  { id: 'question', label: 'Question', category: 'open' },
+  { id: 'investigating', label: 'Investigating', category: 'open' },
+  { id: 'needs-data', label: 'Needs Data', category: 'open' },
+  { id: 'analyzing', label: 'Analyzing', category: 'open' },
+  { id: 'concluded', label: 'Concluded', category: 'closed' },
+  { id: 'invalidated', label: 'Invalidated', category: 'closed' },
+];
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Keep It Simple">
+    Start with 5-7 statuses. Add more only when your workflow demands it.
+  </Step>
+  <Step title="Use System Colors">
+    Prefer system colors like 'accent' and 'foreground/50' for theme consistency.
+  </Step>
+  <Step title="Plan Categories Carefully">
+    Decide which statuses represent active work (open) vs completion (closed).
+  </Step>
+  <Step title="Provide Clear Icons">
+    Use distinct icons that visually communicate each status's meaning.
+  </Step>
+  <Step title="Document Your Workflow">
+    Add descriptions in your team docs explaining when to use each status.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Inbox & Archive" icon="inbox" href="/features/sessions/inbox">
+    Learn how status categories affect inbox/archive views
+  </Card>
+  <Card title="Labels" icon="tags" href="/features/sessions/labels">
+    Combine statuses with labels for powerful organization
+  </Card>
+</CardGroup>

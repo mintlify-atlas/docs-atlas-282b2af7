@@ -1,0 +1,377 @@
+---
+title: Inbox & Archive
+description: Navigate and organize your sessions with inbox/archive views and flagging
+---
+
+Craft Agents provides inbox and archive views to help you focus on active work while preserving completed sessions for reference. The system uses status categories and flags to automatically organize your sessions.
+
+## Inbox vs Archive
+
+<CardGroup cols={2}>
+  <Card title="Inbox" icon="inbox" color="#8B5CF6">
+    Sessions with **open** status category (todo, in-progress, needs-review)
+  </Card>
+  <Card title="Archive" icon="archive" color="#6B7280">
+    Sessions with **closed** status category (done, cancelled)
+  </Card>
+</CardGroup>
+
+<Note>
+The inbox/archive distinction is automatic based on your session status. Change a session's status to move it between views.
+</Note>
+
+## Status Categories
+
+Each status in your workspace has a **category** that determines its inbox/archive behavior:
+
+### Open Category (Inbox)
+
+Statuses that represent active work:
+
+<Tabs>
+  <Tab title="Default Open Statuses">
+    - **Backlog** - Not yet planned
+    - **Todo** - Ready to work on
+    - **Needs Review** - Attention required
+  </Tab>
+  <Tab title="Code Example">
+    ```typescript packages/shared/src/sessions/storage.ts
+    export function listInboxSessions(
+      workspaceRootPath: string
+    ): SessionMetadata[] {
+      return listActiveSessions(workspaceRootPath).filter(s => {
+        const category = getStatusCategory(
+          workspaceRootPath,
+          s.sessionStatus || 'todo'
+        );
+        return category === 'open';
+      });
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Closed Category (Archive)
+
+Statuses that represent completed or terminated work:
+
+<Tabs>
+  <Tab title="Default Closed Statuses">
+    - **Done** - Completed successfully
+    - **Cancelled** - Terminated or abandoned
+  </Tab>
+  <Tab title="Code Example">
+    ```typescript packages/shared/src/sessions/storage.ts
+    export function listCompletedSessions(
+      workspaceRootPath: string
+    ): SessionMetadata[] {
+      return listActiveSessions(workspaceRootPath).filter(s => {
+        const category = getStatusCategory(
+          workspaceRootPath,
+          s.sessionStatus || 'todo'
+        );
+        return category === 'closed';
+      });
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+Custom statuses inherit their inbox/archive behavior from the category you choose when creating them. Plan your status categories carefully.
+</Warning>
+
+## Flagging Sessions
+
+Flags are **independent** of statuses - you can flag any session in any status to mark it for quick access:
+
+<Steps>
+  <Step title="Flag a Session">
+    Mark important sessions for easy filtering
+    ```typescript
+    await flagSession(workspaceRootPath, sessionId);
+    ```
+  </Step>
+  <Step title="View Flagged Sessions">
+    List all flagged sessions (excludes archived)
+    ```typescript
+    const flagged = listFlaggedSessions(workspaceRootPath);
+    ```
+  </Step>
+  <Step title="Unflag When Done">
+    Remove the flag once you're finished
+    ```typescript
+    await unflagSession(workspaceRootPath, sessionId);
+    ```
+  </Step>
+</Steps>
+
+### Code Example
+
+```typescript packages/shared/src/sessions/storage.ts
+/**
+ * List flagged sessions (excludes archived)
+ */
+export function listFlaggedSessions(
+  workspaceRootPath: string
+): SessionMetadata[] {
+  return listActiveSessions(workspaceRootPath).filter(
+    s => s.isFlagged === true
+  );
+}
+
+/**
+ * Flag a session
+ */
+export async function flagSession(
+  workspaceRootPath: string,
+  sessionId: string
+): Promise<void> {
+  await updateSessionMetadata(workspaceRootPath, sessionId, {
+    isFlagged: true
+  });
+}
+```
+
+## Archive Operations
+
+Sessions can be explicitly archived, which removes them from all standard views:
+
+<CardGroup cols={2}>
+  <Card title="Archive" icon="box-archive">
+    ```typescript
+    await archiveSession(
+      workspaceRootPath,
+      sessionId
+    );
+    ```
+  </Card>
+  <Card title="Unarchive" icon="box-open">
+    ```typescript
+    await unarchiveSession(
+      workspaceRootPath,
+      sessionId
+    );
+    ```
+  </Card>
+</CardGroup>
+
+### Archive Metadata
+
+Archived sessions track additional metadata:
+
+```typescript packages/shared/src/sessions/types.ts
+export interface SessionConfig {
+  // ... other fields ...
+  
+  /** Whether this session is archived */
+  isArchived?: boolean;
+  
+  /** Timestamp when session was archived (for retention policy) */
+  archivedAt?: number;
+}
+```
+
+<Note>
+Archiving a session hides it from inbox, completed, and flagged lists. It only appears in `listArchivedSessions()`.
+</Note>
+
+## Retention Policy
+
+Craft Agents can automatically delete old archived sessions:
+
+```typescript packages/shared/src/sessions/storage.ts
+/**
+ * Delete archived sessions older than the specified number of days
+ * Returns the number of sessions deleted
+ */
+export function deleteOldArchivedSessions(
+  workspaceRootPath: string,
+  retentionDays: number
+): number {
+  const cutoffTime = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
+  const archivedSessions = listArchivedSessions(workspaceRootPath);
+  let deletedCount = 0;
+
+  for (const session of archivedSessions) {
+    const archiveTime = session.archivedAt ?? session.lastUsedAt;
+    if (archiveTime < cutoffTime) {
+      if (deleteSession(workspaceRootPath, session.id)) {
+        deletedCount++;
+      }
+    }
+  }
+
+  return deletedCount;
+}
+```
+
+<Warning>
+Deleted sessions cannot be recovered. Ensure your retention policy allows enough time for reference before deletion.
+</Warning>
+
+## Workflow Patterns
+
+### Pattern 1: Status-Based Organization
+
+<Steps>
+  <Step title="New Sessions Start as Todo">
+    All new sessions default to 'todo' status (inbox)
+  </Step>
+  <Step title="Update Status as Work Progresses">
+    Change to 'in-progress', 'needs-review' as needed (stays in inbox)
+  </Step>
+  <Step title="Mark Done When Complete">
+    Set to 'done' status (moves to archive)
+  </Step>
+  <Step title="Archive Old Completed Work">
+    Explicitly archive sessions older than 30 days
+  </Step>
+</Steps>
+
+### Pattern 2: Flag-Based Quick Access
+
+<Steps>
+  <Step title="Flag Current Sprint Work">
+    Mark 3-5 sessions you're actively working on
+  </Step>
+  <Step title="Filter to Flagged View">
+    Focus only on flagged sessions during work sessions
+  </Step>
+  <Step title="Unflag When Context Switching">
+    Remove flags when switching to different projects
+  </Step>
+</Steps>
+
+### Pattern 3: Label + Status Combination
+
+<Steps>
+  <Step title="Apply Labels for Classification">
+    Add labels like "bug", "feature", "documentation"
+  </Step>
+  <Step title="Use Status for State">
+    Track progress with todo → in-progress → done
+  </Step>
+  <Step title="Filter by Label + Inbox">
+    View only inbox sessions with "bug" label
+  </Step>
+</Steps>
+
+## Session Filtering
+
+### Available Filter Functions
+
+```typescript packages/shared/src/sessions/storage.ts
+// All non-archived sessions
+const active = listActiveSessions(workspaceRootPath);
+
+// Sessions with open status (inbox)
+const inbox = listInboxSessions(workspaceRootPath);
+
+// Sessions with closed status (archive)
+const completed = listCompletedSessions(workspaceRootPath);
+
+// Flagged sessions (excludes archived)
+const flagged = listFlaggedSessions(workspaceRootPath);
+
+// Archived sessions only
+const archived = listArchivedSessions(workspaceRootPath);
+```
+
+### Custom Filtering
+
+You can combine filters for advanced queries:
+
+```typescript
+import { listActiveSessions } from '@craft-agent/shared/sessions';
+
+// Flagged inbox sessions with a specific label
+const filtered = listActiveSessions(workspaceRootPath)
+  .filter(s => s.isFlagged === true)
+  .filter(s => {
+    const category = getStatusCategory(workspaceRootPath, s.sessionStatus || 'todo');
+    return category === 'open';
+  })
+  .filter(s => s.labels?.includes('bug'));
+```
+
+## UI Workflows
+
+Typical user interactions in the Craft Agents SaaS:
+
+<Tabs>
+  <Tab title="Inbox View">
+    **Default Landing Page**
+    - Shows all sessions with open status category
+    - Sorted by `lastMessageAt` (most recent first)
+    - Displays status badge, labels, and unread indicator
+    - Quick actions: Change status, flag, archive
+  </Tab>
+  <Tab title="Archive View">
+    **Completed Work Reference**
+    - Shows all sessions with closed status category
+    - Grouped by completion date
+    - Quick actions: Reopen (change to todo), unarchive, delete
+    - Search and filter by labels
+  </Tab>
+  <Tab title="Flagged View">
+    **Quick Access Favorites**
+    - Shows only flagged sessions (any status)
+    - Excludes archived sessions
+    - Sorted by last activity
+    - Quick unflag action
+  </Tab>
+</Tabs>
+
+## Unread Tracking
+
+Sessions track unread state for real-time collaboration:
+
+```typescript packages/shared/src/sessions/types.ts
+export interface SessionConfig {
+  /** ID of last message user has read */
+  lastReadMessageId?: string;
+  
+  /**
+   * Explicit unread flag - single source of truth for NEW badge.
+   * Set to true when assistant message completes while user is NOT viewing.
+   * Set to false when user views the session (and not processing).
+   */
+  hasUnread?: boolean;
+}
+```
+
+<Note>
+The `hasUnread` flag is the single source of truth for displaying "NEW" badges in session lists.
+</Note>
+
+## Best Practices
+
+<Steps>
+  <Step title="Use Statuses for Workflow State">
+    Map your team's workflow to custom statuses (backlog → todo → in-progress → done)
+  </Step>
+  <Step title="Use Flags for Temporary Focus">
+    Flag the 3-5 sessions you're actively working on this week
+  </Step>
+  <Step title="Use Labels for Classification">
+    Apply labels like "bug", "feature", "priority::1" for long-term organization
+  </Step>
+  <Step title="Archive Regularly">
+    Keep your inbox clean by archiving completed work monthly
+  </Step>
+  <Step title="Set Retention Policies">
+    Configure automatic deletion of archived sessions older than 90 days
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Status System" icon="circle-dot" href="/features/sessions/statuses">
+    Learn about customizable session statuses
+  </Card>
+  <Card title="Labels" icon="tags" href="/features/sessions/labels">
+    Organize sessions with hierarchical labels
+  </Card>
+</CardGroup>

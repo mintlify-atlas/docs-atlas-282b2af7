@@ -1,0 +1,452 @@
+---
+title: Creating Custom Skills
+description: Build specialized skills tailored to your workflow
+icon: hammer
+---
+
+## Getting Started
+
+Creating a custom skill involves three main steps:
+
+<Steps>
+  <Step title="Create the skill directory">
+    Organize your skill in a dedicated folder
+  </Step>
+  <Step title="Write SKILL.md with frontmatter and instructions">
+    Define metadata and provide guidance for Claude
+  </Step>
+  <Step title="Add an icon for visual identification">
+    Include a visual indicator for the UI
+  </Step>
+</Steps>
+
+## File Structure
+
+Each skill is a directory containing these files:
+
+```
+~/.craft-agent/workspaces/{workspaceId}/skills/{slug}/
+├── SKILL.md          # Required: Skill definition
+├── icon.svg          # Recommended: Visual identifier
+└── (other files)     # Optional: Reference docs, templates
+```
+
+### Skill Slug Requirements
+
+- Lowercase letters, numbers, and hyphens only
+- Must start with a letter
+- No spaces or special characters
+- Examples: `commit`, `code-review`, `api-docs`
+
+## SKILL.md Format
+
+The SKILL.md file uses YAML frontmatter followed by Markdown content:
+
+```yaml
+---
+name: "Display Name"
+description: "Brief description for skill list"
+globs: ["*.ts", "*.tsx"]     # Optional
+alwaysAllow: ["Bash"]        # Optional
+requiredSources:             # Optional
+  - github
+  - linear
+---
+
+# Skill Instructions
+
+Your skill content goes here...
+```
+
+### Frontmatter Fields
+
+<AccordionGroup>
+  <Accordion title="name (required)">
+    Display name shown in the UI and skill list.
+    
+    ```yaml
+    name: "Code Review Helper"
+    ```
+  </Accordion>
+  
+  <Accordion title="description (required)">
+    Brief 1-2 sentence explanation of what the skill does.
+    
+    ```yaml
+    description: "Review code changes for quality, security, and best practices"
+    ```
+  </Accordion>
+  
+  <Accordion title="globs (optional)">
+    Array of glob patterns. When files matching these patterns are being worked on, the skill may be automatically suggested.
+    
+    ```yaml
+    globs:
+      - "*.test.ts"           # Test files
+      - "*.spec.tsx"          # React test files
+      - "**/__tests__/**"     # Test directories
+    ```
+  </Accordion>
+  
+  <Accordion title="alwaysAllow (optional)">
+    Array of tool names that are automatically allowed when this skill is active. Useful for skills that require specific tools without prompting.
+    
+    ```yaml
+    alwaysAllow:
+      - "Bash"                # Allow bash commands
+      - "Write"               # Allow file writes
+    ```
+  </Accordion>
+  
+  <Accordion title="requiredSources (optional)">
+    Array of source slugs to auto-enable when this skill is invoked. Sources must exist in the workspace and be authenticated.
+    
+    ```yaml
+    requiredSources:
+      - linear               # Auto-enable Linear source
+      - github               # Auto-enable GitHub source
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Writing Effective Instructions
+
+### Structure Your Content
+
+Organize instructions with clear headings and sections:
+
+```markdown
+# Skill Name
+
+## Purpose
+Briefly explain what this skill helps accomplish.
+
+## Guidelines
+- Specific instruction 1
+- Specific instruction 2
+- Things to check for
+
+## Examples
+Show concrete examples of correct behavior.
+
+## Avoid
+List things the skill should NOT do.
+```
+
+### Be Specific and Actionable
+
+<CodeGroup>
+```markdown Vague (Bad)
+## Code Review
+
+Check the code for issues and suggest improvements.
+```
+
+```markdown Specific (Good)
+## Code Review
+
+When reviewing code:
+
+1. **Security Checks**
+   - Validate all user inputs
+   - Check for exposed credentials
+   - Verify authentication on protected routes
+
+2. **Code Quality**
+   - Consistent naming (camelCase for variables, PascalCase for components)
+   - Functions under 50 lines
+   - Clear error messages
+
+3. **Testing**
+   - All new features have tests
+   - Edge cases are covered
+   - Mock external dependencies
+```
+</CodeGroup>
+
+### Include Examples
+
+Show Claude exactly what you expect:
+
+```markdown
+## Commit Message Format
+
+Use conventional commits:
+
+**Good:**
+```
+feat(auth): add OAuth2 provider support
+
+Implements Google and GitHub OAuth flows with token refresh.
+
+Co-Authored-By: Claude
+```
+
+**Bad:**
+```
+fixed stuff
+```
+```
+
+### Set Clear Boundaries
+
+Explicitly state what the skill should NOT do:
+
+```markdown
+## Boundaries
+
+- DO NOT modify database migrations
+- DO NOT change API contracts without documentation
+- DO NOT remove existing tests
+```
+
+## Adding Icons
+
+Every skill should have a visually relevant icon for easy identification.
+
+### Icon Requirements
+
+- **Filename**: Must be `icon.svg`, `icon.png`, `icon.jpg`, or `icon.jpeg`
+- **Format**: SVG preferred (scalable, crisp at all sizes)
+- **Size**: For PNG/JPG, use at least 64x64 pixels
+
+### Finding Icons
+
+<CardGroup cols={3}>
+  <Card title="Heroicons" icon="sparkles" href="https://heroicons.com/">
+    MIT licensed, clean UI icons
+  </Card>
+  <Card title="Feather Icons" icon="feather" href="https://feathericons.com/">
+    Simple, consistent icon set
+  </Card>
+  <Card title="Simple Icons" icon="code" href="https://simpleicons.org/">
+    Brand icons (Git, npm, etc.)
+  </Card>
+</CardGroup>
+
+### Icon Selection Guide
+
+| Skill Type | Suggested Icons |
+|------------|----------------|
+| Git/Commit | Git logo, commit symbol |
+| Testing | Checkmark, test tube, beaker |
+| Deployment | Rocket, cloud, server |
+| Code Review | Magnifying glass, eye, checklist |
+| Documentation | Book, file text, document |
+| Security | Shield, lock, key |
+
+## Example Skills
+
+### Commit Message Skill
+
+<CodeGroup>
+```yaml SKILL.md
+---
+name: "Commit"
+description: "Create well-formatted git commit messages"
+alwaysAllow: ["Bash"]
+---
+
+# Commit Message Guidelines
+
+When creating commits:
+
+## Format
+Use conventional commits:
+- `feat:` New feature
+- `fix:` Bug fix
+- `docs:` Documentation
+- `refactor:` Code refactoring
+- `test:` Adding tests
+
+## Style
+- Keep subject line under 72 characters
+- Use imperative mood ("Add feature" not "Added feature")
+- Explain why, not what (the diff shows what)
+
+## Co-authorship
+Always include: `Co-Authored-By: Claude <noreply@anthropic.com>`
+```
+
+```bash Directory Structure
+~/.craft-agent/workspaces/{ws}/skills/commit/
+├── SKILL.md
+└── icon.svg  # Git commit icon
+```
+</CodeGroup>
+
+### Team Standards Skill
+
+<CodeGroup>
+```yaml SKILL.md
+---
+name: "Team Standards"
+description: "Enforce team coding conventions and patterns"
+globs: ["src/**/*.ts", "src/**/*.tsx"]
+---
+
+# Team Coding Standards
+
+## File Organization
+- One component per file
+- Co-locate tests with source files
+- Use barrel exports (index.ts)
+
+## Naming Conventions
+- Components: PascalCase
+- Hooks: camelCase with `use` prefix
+- Constants: SCREAMING_SNAKE_CASE
+
+## Import Order
+1. External packages
+2. Internal packages (@company/*)
+3. Relative imports
+
+## Avoid
+- Default exports (use named exports)
+- Inline styles (use CSS modules)
+- Magic numbers (define as constants)
+```
+
+```bash Directory Structure
+~/.craft-agent/workspaces/{ws}/skills/team-standards/
+├── SKILL.md
+└── icon.svg  # Clipboard or checklist icon
+```
+</CodeGroup>
+
+### API Documentation Skill
+
+<CodeGroup>
+```yaml SKILL.md
+---
+name: "API Docs"
+description: "Generate consistent API documentation"
+globs: ["**/api/**/*.ts", "**/routes/**/*.ts"]
+---
+
+# API Documentation Guidelines
+
+## Endpoint Documentation
+
+For each endpoint, include:
+
+### Required Sections
+- **Description**: What the endpoint does
+- **Authentication**: Required auth level
+- **Parameters**: All query/path/body params
+- **Response**: Success response format
+- **Errors**: Possible error codes
+
+### Example
+```typescript
+/**
+ * Get user profile
+ * 
+ * @auth Bearer token required
+ * @param {string} userId - User ID (path parameter)
+ * @returns {User} User profile object
+ * @throws {404} User not found
+ * @throws {401} Unauthorized
+ */
+```
+
+## Best Practices
+- Include example requests/responses
+- Document rate limits
+- Specify required vs optional fields
+- List valid enum values
+```
+
+```bash Directory Structure
+~/.craft-agent/workspaces/{ws}/skills/api-docs/
+├── SKILL.md
+└── icon.svg  # Document or book icon
+```
+</CodeGroup>
+
+## Validating Skills
+
+<Warning>
+Always validate after creating or editing a skill to catch errors early.
+</Warning>
+
+Use the validation tool to check your skill:
+
+```
+skill_validate({ skillSlug: "my-skill" })
+```
+
+### What Gets Validated
+
+- Slug format (lowercase, alphanumeric, hyphens only)
+- SKILL.md exists and is readable
+- YAML frontmatter is valid
+- Required fields present (name, description)
+- Content is non-empty
+- Icon format (if present)
+
+## Testing Your Skill
+
+<Steps>
+  <Step title="Invoke the skill">
+    Use `/your-skill` or `@your-skill` to activate it
+  </Step>
+  <Step title="Verify behavior">
+    Check that Claude follows your instructions
+  </Step>
+  <Step title="Iterate and refine">
+    Update SKILL.md based on actual usage
+  </Step>
+  <Step title="Re-validate">
+    Run `skill_validate` after each change
+  </Step>
+</Steps>
+
+## Best Practices Checklist
+
+<Check>Keep instructions specific and actionable</Check>
+<Check>Include concrete examples of expected output</Check>
+<Check>Set clear boundaries (what NOT to do)</Check>
+<Check>Use a focused scope (one task per skill)</Check>
+<Check>Add a visually relevant icon</Check>
+<Check>Validate after creation or edits</Check>
+<Check>Test with real scenarios</Check>
+<Check>Update based on feedback</Check>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Skill not loading">
+    - Check slug format (lowercase, alphanumeric, hyphens only)
+    - Verify SKILL.md exists and is readable
+    - Run `skill_validate` for detailed errors
+    - Check file permissions (should be readable)
+  </Accordion>
+  
+  <Accordion title="Skill not triggering on files">
+    - Verify glob patterns match your files
+    - Check if skill is in correct workspace
+    - Ensure file paths are relative to project root
+  </Accordion>
+  
+  <Accordion title="Icon not showing">
+    - Use supported formats: svg, png, jpg, jpeg
+    - File must be named `icon.{ext}` (not `my-icon.svg`)
+    - Check icon file is not corrupted
+    - For SVG, ensure valid XML structure
+  </Accordion>
+  
+  <Accordion title="Instructions not followed">
+    - Make instructions more specific
+    - Add concrete examples
+    - Break complex tasks into steps
+    - Set explicit boundaries
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<Card title="Import from Claude Code" icon="download" href="/features/skills/importing">
+  Learn how to import existing skills from Claude Code SDK
+</Card>

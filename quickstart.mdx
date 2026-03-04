@@ -1,80 +1,352 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Go from zero to your first agent conversation in under 5 minutes
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide walks you through:
+1. Launching Craft Agents
+2. Connecting an AI provider
+3. Creating your first workspace
+4. Starting your first agent session
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+Before starting, make sure you have [installed Craft Agents](/installation).
 </Note>
+
+## Step 1: Launch the App
+
+Open Craft Agents from your Applications folder, Start menu, or app launcher.
+
+On first launch, you'll see the welcome screen.
+
+## Step 2: Choose an AI Provider
+
+Craft Agents supports multiple AI providers. Choose the one that works best for you:
+
+<CardGroup cols={2}>
+  <Card title="Anthropic" icon="key">
+    **API Key** or **Claude Max/Pro** subscription
+    
+    Most popular option. Direct access to Claude via the Agent SDK.
+  </Card>
+  
+  <Card title="Google AI Studio" icon="google">
+    **API Key** from Google AI Studio
+    
+    Access Gemini models with built-in Google Search grounding.
+  </Card>
+  
+  <Card title="ChatGPT Plus" icon="openai">
+    **OAuth** with ChatGPT subscription
+    
+    One-click sign-in with your ChatGPT Plus or Pro account.
+  </Card>
+  
+  <Card title="GitHub Copilot" icon="github">
+    **OAuth** with Copilot subscription
+    
+    Device code authentication with your GitHub Copilot subscription.
+  </Card>
+</CardGroup>
+
+### Connecting with Anthropic
+
+<Steps>
+  <Step title="Get an API Key">
+    Go to [Anthropic Console](https://console.anthropic.com/settings/keys) and create a new API key.
+    
+    <Tip>
+    If you have a **Claude Max or Pro subscription**, you can use OAuth instead - just click "Sign in with Claude" in the app.
+    </Tip>
+  </Step>
+
+  <Step title="Add Connection in Craft Agents">
+    1. Click **"Add LLM Connection"** in the app
+    2. Choose **"Anthropic (Claude Agent SDK)"**
+    3. Paste your API key
+    4. Give it a name (e.g., "Claude API")
+    5. Click **Save**
+  </Step>
+</Steps>
+
+### Connecting with Google AI Studio
+
+<Steps>
+  <Step title="Get an API Key">
+    1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
+    2. Click **"Create API Key"**
+    3. Copy the key
+  </Step>
+
+  <Step title="Add Connection in Craft Agents">
+    1. Click **"Add LLM Connection"**
+    2. Choose **"Google AI Studio"**
+    3. Paste your API key
+    4. Choose your preferred model (e.g., `gemini-2.0-flash-exp`)
+    5. Click **Save**
+  </Step>
+</Steps>
+
+### Alternative: OpenRouter, Ollama, Custom APIs
+
+Craft Agents also supports third-party and self-hosted providers:
+
+- **OpenRouter**: Access hundreds of models through one API key
+- **Ollama**: Run models locally at `http://localhost:11434`
+- **Custom endpoints**: Any OpenAI or Anthropic-compatible API
+
+<Tip>
+For OpenRouter, choose "Anthropic (Claude Agent SDK)" connection type, then set the endpoint to `https://openrouter.ai/api`.
+</Tip>
+
+## Step 3: Create a Workspace
+
+Workspaces help you organize sessions by project, team, or context.
+
+<Steps>
+  <Step title="Click 'New Workspace'">
+    In the sidebar, click the **"+"** button or **"New Workspace"** link.
+  </Step>
+
+  <Step title="Configure Workspace">
+    - **Name**: Give it a clear name (e.g., "Personal Projects", "Work - iOS Team")
+    - **Default LLM**: Choose the AI provider you just connected
+    - **Permission Mode**: Start with **"Ask to Edit"** (you can change this per-session)
+  </Step>
+
+  <Step title="Save">
+    Click **Create** to save your workspace.
+  </Step>
+</Steps>
+
+Your workspace is now active and ready for sessions.
+
+## Step 4: Start Your First Session
+
+Now let's create your first agent conversation:
+
+<Steps>
+  <Step title="Create a New Session">
+    Press **Cmd+N** (macOS) or **Ctrl+N** (Windows/Linux), or click **"New Chat"**.
+  </Step>
+
+  <Step title="Send Your First Message">
+    Try something simple to test the connection:
+    
+    ```
+    Hello! Can you help me understand what Craft Agents can do?
+    ```
+    
+    Press **Enter** to send.
+  </Step>
+
+  <Step title="Watch the Agent Respond">
+    You'll see:
+    - Streaming text response
+    - Tool use visualization (if the agent uses tools)
+    - Real-time status updates
+  </Step>
+</Steps>
+
+<Note>
+Your first message might take a few seconds as the agent initializes. Subsequent messages will be faster.
+</Note>
+
+## Understanding Permission Modes
+
+Notice the permission indicator in the chat interface. Craft Agents has three modes:
+
+| Mode | Display | Behavior |
+|------|---------|----------|
+| **Explore** | 🔍 Explore | Read-only - blocks all write operations |
+| **Ask to Edit** | ✋ Ask to Edit | Prompts before making changes (default) |
+| **Auto** | ⚡ Auto | Auto-approves all commands |
+
+**Toggle modes instantly** with **SHIFT+TAB**.
+
+<Tip>
+Start with **Ask to Edit** mode. Switch to **Explore** when browsing unfamiliar code, or **Auto** when you trust the agent completely.
+</Tip>
+
+## Try Something Useful
+
+Now that you're set up, try asking the agent to help with a real task:
+
+<CodeGroup>
+```markdown Explore Your Codebase
+Can you analyze the structure of my project at ~/code/my-app?
+Show me the main components and how they're organized.
+```
+
+```markdown Create a Source
+I want to connect to Linear so I can track issues.
+Can you set that up for me?
+```
+
+```markdown Write Code
+Create a React component for a todo list with:
+- Add new todos
+- Mark todos as complete
+- Delete todos
+- Use TypeScript and Tailwind CSS
+```
+
+```markdown Research & Summarize
+Search the web for the latest updates to Next.js 15.
+Summarize the key features and breaking changes.
+```
+</CodeGroup>
+
+## Next Steps
+
+### Add Sources
+
+Sources let you connect external data and services. Try:
+
+```
+Add GitHub as a source
+```
+
+The agent will:
+1. Find the GitHub MCP server
+2. Set up authentication
+3. Configure it for your workspace
+
+You can then use `@github` in messages to interact with your repositories.
+
+<Card title="Learn about Sources" icon="plug" href="/features/sources/overview">
+  Connect MCP servers, REST APIs, and local filesystems
+</Card>
+
+### Create Skills
+
+Skills are specialized instructions for recurring tasks:
+
+```
+Create a skill called "code-review" that checks for:
+- Code quality and style
+- Security issues
+- Performance considerations
+```
+
+Skills are compatible with Claude Code SDK format and can be invoked with slash commands like `/code-review`.
+
+<Card title="Learn about Skills" icon="wand-magic-sparkles" href="/features/skills/overview">
+  Create custom agent instructions for your workflows
+</Card>
+
+### Set Up Automations
+
+Automate workflows with event-driven triggers:
+
+```
+Set up a daily standup briefing every weekday at 9am
+that summarizes my GitHub issues and Linear tickets
+```
+
+<Card title="Learn about Automations" icon="bolt" href="/features/automations/overview">
+  Trigger agent sessions on schedules, labels, and events
+</Card>
+
+## Keyboard Shortcuts
+
+Speed up your workflow with these shortcuts:
+
+| Shortcut | Action |
+|----------|--------|
+| **Cmd+N** / **Ctrl+N** | New chat |
+| **Cmd+1/2/3** | Focus sidebar / session list / chat |
+| **Cmd+/** | Show keyboard shortcuts |
+| **SHIFT+TAB** | Cycle permission modes |
+| **Enter** | Send message |
+| **Shift+Enter** | New line in message |
+
+<Tip>
+Press **Cmd+/** (or **Ctrl+/**) anytime to see all available shortcuts.
+</Tip>
+
+## Common First Tasks
+
+### Connecting Your Obsidian Vault
+
+```
+Add a local filesystem source for my Obsidian vault at ~/Documents/ObsidianVault
+```
+
+The agent creates a local source and you can now search and read your notes with `@obsidian`.
+
+### Importing Claude Code Skills
+
+If you're coming from Claude Code:
+
+```
+Import all my skills from Claude Code
+```
+
+The agent migrates your skills automatically.
+
+### Setting Up Your Team's GitHub Org
+
+```
+Connect to GitHub and focus on the "mycompany" organization.
+I mainly work on the "web-app" and "mobile-app" repositories.
+```
+
+The agent configures GitHub access and documents your focus areas in the source guide.
+
+## Tips for Success
+
+<CardGroup cols={2}>
+  <Card title="Be Specific" icon="bullseye">
+    "Create a Next.js API route for user authentication" works better than "help me with Next.js"
+  </Card>
+  
+  <Card title="Use @mentions" icon="at">
+    Reference sources and skills: "Using @github, show me recent PRs"
+  </Card>
+  
+  <Card title="Iterate in Sessions" icon="arrows-rotate">
+    Keep conversations in one session. The agent remembers context.
+  </Card>
+  
+  <Card title="Organize with Statuses" icon="list-check">
+    Use Todo → In Progress → Done workflow to track session progress
+  </Card>
+</CardGroup>
+
+## Getting Help
+
+If you run into issues:
+
+1. **Check the docs**: This documentation covers all features in detail
+2. **Enable debug mode**: Launch with `-- --debug` flag to see detailed logs
+3. **Ask the agent**: "How do I connect to Linear?" - the agent can help with setup
+4. **GitHub Issues**: [Report bugs or request features](https://github.com/lukilabs/craft-agents-oss/issues)
+
+<Warning>
+Craft Agents stores all configuration at `~/.craft-agent/`. If you need to reset everything, quit the app and delete this folder. Your conversations and credentials will be removed.
+</Warning>
+
+## What's Next?
+
+You're now ready to use Craft Agents! Explore the documentation to learn about:
+
+<CardGroup cols={2}>
+  <Card title="Sources" icon="plug" href="/features/sources/overview">
+    Connect to MCP servers, APIs, and local files
+  </Card>
+  
+  <Card title="Skills" icon="wand-magic-sparkles" href="/features/skills/overview">
+    Create specialized agent instructions
+  </Card>
+  
+  <Card title="Permissions" icon="shield" href="/features/permissions/modes">
+    Control what agents can do in each mode
+  </Card>
+  
+  <Card title="Automations" icon="bolt" href="/features/automations/overview">
+    Set up event-driven workflows
+  </Card>
+</CardGroup>

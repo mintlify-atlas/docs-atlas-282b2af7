@@ -1,0 +1,367 @@
+---
+title: Importing Skills
+description: Import and migrate skills from Claude Code SDK
+icon: download
+---
+
+## Compatibility with Claude Code
+
+Craft Agent uses **the exact same SKILL.md format** as the Claude Code SDK. This means any skill written for Claude Code works in Craft Agent without modification.
+
+<Note>
+Skills are fully portable between Claude Code and Craft Agent - same frontmatter fields, same content structure, same behavior.
+</Note>
+
+### What's Identical
+
+<CardGroup cols={2}>
+  <Card title="File Format" icon="file">
+    SKILL.md with YAML frontmatter + Markdown content
+  </Card>
+  <Card title="Frontmatter Fields" icon="list">
+    `name`, `description`, `globs`, `alwaysAllow`, `requiredSources`
+  </Card>
+  <Card title="Content Structure" icon="code">
+    Markdown instructions that guide Claude's behavior
+  </Card>
+  <Card title="Tool Permissions" icon="shield">
+    Same `alwaysAllow` behavior for pre-approving tools
+  </Card>
+</CardGroup>
+
+### What Craft Agent Adds
+
+<Steps>
+  <Step title="Visual Icons">
+    Display custom icons in the UI for easy identification
+  </Step>
+  <Step title="Workspace Organization">
+    Skills are scoped to workspaces for better organization
+  </Step>
+  <Step title="UI Management">
+    Browse, edit, and validate skills through the interface
+  </Step>
+  <Step title="Three-Tier System">
+    Project > Workspace > Global skill precedence
+  </Step>
+</Steps>
+
+## Importing from Claude Code
+
+### Method 1: Copy Skill Directory
+
+The simplest approach is to copy the entire skill folder:
+
+<Steps>
+  <Step title="Locate the Claude Code skill">
+    Find your skill in `~/.agents/skills/{slug}/`
+  </Step>
+  <Step title="Copy to Craft Agent">
+    ```bash
+    cp -r ~/.agents/skills/my-skill ~/.craft-agent/workspaces/{ws}/skills/
+    ```
+  </Step>
+  <Step title="Verify import">
+    Check that the skill appears in your workspace
+  </Step>
+</Steps>
+
+### Method 2: Copy SKILL.md Only
+
+If you only need the skill definition:
+
+<Steps>
+  <Step title="Create destination directory">
+    ```bash
+    mkdir -p ~/.craft-agent/workspaces/{ws}/skills/my-skill
+    ```
+  </Step>
+  <Step title="Copy SKILL.md">
+    ```bash
+    cp ~/.agents/skills/my-skill/SKILL.md ~/.craft-agent/workspaces/{ws}/skills/my-skill/
+    ```
+  </Step>
+  <Step title="Add an icon">
+    Include an `icon.svg` or `icon.png` for visual identification
+  </Step>
+</Steps>
+
+## Migration Checklist
+
+When importing skills from Claude Code, verify these elements:
+
+<AccordionGroup>
+  <Accordion title="Frontmatter Validation">
+    Ensure all required fields are present:
+    
+    ```yaml
+    ---
+    name: "Skill Name"              # Required
+    description: "Brief description" # Required
+    globs: ["*.ts"]                 # Optional
+    alwaysAllow: ["Bash"]           # Optional
+    requiredSources: ["github"]     # Optional
+    ---
+    ```
+  </Accordion>
+  
+  <Accordion title="File Structure">
+    Verify the directory structure:
+    
+    ```
+    ~/.craft-agent/workspaces/{ws}/skills/{slug}/
+    ├── SKILL.md          # Copied from Claude Code
+    ├── icon.svg          # Add for Craft Agent UI
+    └── (other files)     # Any additional resources
+    ```
+  </Accordion>
+  
+  <Accordion title="Icon Addition">
+    Claude Code skills may not have icons. Add one for better UX:
+    
+    - Find a relevant icon from [Heroicons](https://heroicons.com/) or [Feather Icons](https://feathericons.com/)
+    - Save as `icon.svg`, `icon.png`, `icon.jpg`, or `icon.jpeg`
+    - Place in the skill directory
+  </Accordion>
+  
+  <Accordion title="Source Compatibility">
+    If using `requiredSources`, ensure those sources exist in your workspace:
+    
+    - Check source is configured in Craft Agent
+    - Verify authentication is complete
+    - Unauthenticated sources are silently skipped
+  </Accordion>
+</AccordionGroup>
+
+## Skill Precedence System
+
+Craft Agent extends Claude Code's skill system with a three-tier hierarchy:
+
+<Steps>
+  <Step title="Global Skills (Lowest Priority)">
+    Located in `~/.agents/skills/` - shared across all workspaces
+    
+    **Use for:** Universal skills that apply everywhere
+  </Step>
+  <Step title="Workspace Skills (Medium Priority)">
+    Located in `~/.craft-agent/workspaces/{id}/skills/` - scoped to workspace
+    
+    **Use for:** Team or project-specific customizations
+  </Step>
+  <Step title="Project Skills (Highest Priority)">
+    Located in `{project}/.agents/skills/` - specific to codebase
+    
+    **Use for:** Repository-specific conventions
+  </Step>
+</Steps>
+
+<Tip>
+When multiple skills share the same slug, the higher-priority version takes precedence. This lets you override global skills with workspace or project-specific versions.
+</Tip>
+
+## Example: Importing a Commit Skill
+
+Let's walk through importing a commit message skill from Claude Code:
+
+<Steps>
+  <Step title="Check the original skill">
+    ```bash
+    cat ~/.agents/skills/commit/SKILL.md
+    ```
+    
+    ```yaml
+    ---
+    name: "Commit"
+    description: "Create well-formatted git commit messages"
+    alwaysAllow: ["Bash"]
+    ---
+    
+    # Commit Message Guidelines
+    ...
+    ```
+  </Step>
+  
+  <Step title="Copy to workspace">
+    ```bash
+    cp -r ~/.agents/skills/commit ~/.craft-agent/workspaces/{ws}/skills/
+    ```
+  </Step>
+  
+  <Step title="Add an icon">
+    Download a git commit icon and save it:
+    
+    ```bash
+    # Save icon to skill directory
+    cp ~/Downloads/commit-icon.svg ~/.craft-agent/workspaces/{ws}/skills/commit/icon.svg
+    ```
+  </Step>
+  
+  <Step title="Validate the import">
+    ```
+    skill_validate({ skillSlug: "commit" })
+    ```
+  </Step>
+  
+  <Step title="Test the skill">
+    Invoke it with `/commit` or `@commit` to verify behavior
+  </Step>
+</Steps>
+
+## Overriding SDK Skills
+
+Both Claude Code and Craft Agent have built-in SDK skills. You can override them in both systems:
+
+### In Claude Code
+
+Create a skill with the same slug:
+
+```bash
+mkdir -p ~/.agents/skills/commit
+# Write custom SKILL.md
+```
+
+### In Craft Agent
+
+Same approach, but with workspace or project scope:
+
+```bash
+# Workspace-level override
+mkdir -p ~/.craft-agent/workspaces/{ws}/skills/commit
+
+# Project-level override (highest priority)
+mkdir -p {project}/.agents/skills/commit
+```
+
+<Note>
+Craft Agent checks project skills first, then workspace skills, then global skills, then falls back to SDK skills.
+</Note>
+
+## Bulk Import
+
+To import all your Claude Code skills at once:
+
+```bash
+# Copy all skills to workspace
+cp -r ~/.agents/skills/* ~/.craft-agent/workspaces/{ws}/skills/
+
+# Or symlink to keep them in sync
+ln -s ~/.agents/skills/* ~/.craft-agent/workspaces/{ws}/skills/
+```
+
+<Warning>
+If symlinking, changes in Claude Code will affect Craft Agent and vice versa. Use copying for independent versions.
+</Warning>
+
+## Adding Icons to Imported Skills
+
+Imported skills may not have icons. Here's how to add them efficiently:
+
+<Steps>
+  <Step title="Identify skills without icons">
+    ```bash
+    for skill in ~/.craft-agent/workspaces/{ws}/skills/*/; do
+      if ! ls "$skill"icon.* 2>/dev/null; then
+        echo "Missing icon: $(basename "$skill")"
+      fi
+    done
+    ```
+  </Step>
+  
+  <Step title="Find appropriate icons">
+    Visit icon libraries:
+    - [Heroicons](https://heroicons.com/) for UI icons
+    - [Simple Icons](https://simpleicons.org/) for brand icons
+    - [Feather Icons](https://feathericons.com/) for minimal designs
+  </Step>
+  
+  <Step title="Download and save icons">
+    Save each icon as `icon.svg` in the respective skill directory
+  </Step>
+  
+  <Step title="Validate all skills">
+    ```
+    skill_validate({ skillSlug: "skill-1" })
+    skill_validate({ skillSlug: "skill-2" })
+    # ... repeat for each skill
+    ```
+  </Step>
+</Steps>
+
+## Exporting from Craft Agent
+
+You can also export Craft Agent skills to use in Claude Code:
+
+<Steps>
+  <Step title="Copy skill to global directory">
+    ```bash
+    cp -r ~/.craft-agent/workspaces/{ws}/skills/my-skill ~/.agents/skills/
+    ```
+  </Step>
+  
+  <Step title="Remove Craft Agent-specific files (optional)">
+    Claude Code doesn't use icons, so you can remove them:
+    ```bash
+    rm ~/.agents/skills/my-skill/icon.*
+    ```
+  </Step>
+  
+  <Step title="Test in Claude Code">
+    Launch Claude Code and verify the skill works
+  </Step>
+</Steps>
+
+## Troubleshooting Imports
+
+<AccordionGroup>
+  <Accordion title="Skill not appearing after import">
+    - Check the skill directory exists in the correct location
+    - Verify SKILL.md is present and readable
+    - Run `skill_validate` to check for errors
+    - Restart Craft Agent to reload skills
+  </Accordion>
+  
+  <Accordion title="Frontmatter parsing errors">
+    - Ensure YAML syntax is correct (proper indentation, quotes)
+    - Check for required fields: `name` and `description`
+    - Validate array formats: `globs: ["*.ts"]` not `globs: *.ts`
+  </Accordion>
+  
+  <Accordion title="Icon not showing">
+    - Confirm icon filename is exactly `icon.svg`, `icon.png`, `icon.jpg`, or `icon.jpeg`
+    - Check file is not corrupted (open in image viewer)
+    - For SVG, validate XML structure
+  </Accordion>
+  
+  <Accordion title="Required sources not working">
+    - Verify sources exist in workspace configuration
+    - Check sources are authenticated
+    - Ensure source slugs match exactly (case-sensitive)
+  </Accordion>
+  
+  <Accordion title="Skill behavior differs from Claude Code">
+    - The SKILL.md format is identical, but MCP tool availability may differ
+    - Check that required tools are available in Craft Agent
+    - Verify `alwaysAllow` permissions match your needs
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<Check>Import to workspace level for team-specific skills</Check>
+<Check>Use project level for repository-specific conventions</Check>
+<Check>Add icons to all imported skills for better UX</Check>
+<Check>Validate after every import with `skill_validate`</Check>
+<Check>Test imported skills before sharing with team</Check>
+<Check>Document any Craft Agent-specific customizations</Check>
+<Check>Keep a backup of original Claude Code skills</Check>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Skills Overview" icon="book" href="/features/skills/overview">
+    Learn more about how skills work
+  </Card>
+  <Card title="Creating Skills" icon="hammer" href="/features/skills/creating-skills">
+    Build custom skills from scratch
+  </Card>
+</CardGroup>

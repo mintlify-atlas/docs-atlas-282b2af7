@@ -1,0 +1,332 @@
+---
+title: 'Permission Modes'
+description: 'Control agent behavior with three permission levels: Explore, Ask, and Execute'
+icon: 'shield-check'
+---
+
+## Overview
+
+Craft Agents uses a **per-session permission mode system** to control what actions the agent can perform. Each session maintains its own mode state independently, preventing cross-session contamination.
+
+<Note>
+  Permission modes are stored per-session and persist across app restarts. Use **SHIFT+TAB** to cycle between modes.
+</Note>
+
+## Three Permission Modes
+
+The agent operates in one of three modes, each with different behavior for tool execution:
+
+<CardGroup cols={3}>
+  <Card title="Explore" icon="compass" color="#8B5CF6">
+    **Read-only mode**
+    
+    - Blocks all write operations
+    - Never prompts for approval
+    - Allows safe exploration without risk
+    - Green indicator in UI
+  </Card>
+  
+  <Card title="Ask to Edit" icon="circle-question" color="#8B5CF6">
+    **Interactive mode (default)**
+    
+    - Prompts before dangerous operations
+    - Bash commands require approval
+    - Balances safety and productivity
+    - Amber indicator in UI
+  </Card>
+  
+  <Card title="Execute" icon="repeat" color="#8B5CF6">
+    **Auto-approve mode**
+    
+    - Skips all permission checks
+    - Everything runs automatically
+    - Maximum productivity, minimum friction
+    - Violet indicator in UI
+  </Card>
+</CardGroup>
+
+## Explore Mode (Safe)
+
+Explore mode provides **read-only access** to your workspace and connected sources. It's designed for safe exploration without risk of accidental changes.
+
+### What's Blocked
+
+```typescript
+// From mode-types.ts - Hardcoded blocked tools
+const BLOCKED_TOOLS = [
+  'Write',        // Create new files
+  'Edit',         // Modify existing files
+  'MultiEdit',    // Batch file edits
+  'NotebookEdit'  // Modify notebooks
+];
+```
+
+<Warning>
+  Write, Edit, MultiEdit, and NotebookEdit are **always blocked** in Explore mode and cannot be overridden via permissions.json.
+</Warning>
+
+### What's Allowed
+
+In Explore mode, the agent can:
+
+- **Read files** using the Read tool
+- **Search code** with Glob and Grep
+- **Run safe bash commands** matching allowlist patterns
+- **Call read-only MCP tools** (matching patterns)
+- **Make GET API requests** to connected sources
+
+### Bash Command Filtering
+
+Explore mode uses **regex-based allowlists** to determine which bash commands are safe:
+
+```typescript
+// Example from permissions.json
+{
+  "allowedBashPatterns": [
+    {
+      "pattern": "^git\\s+(status|log|diff|show|branch)\\b",
+      "comment": "Git read-only operations"
+    },
+    {
+      "pattern": "^ls\\b",
+      "comment": "List directory contents"
+    },
+    {
+      "pattern": "^cat\\b",
+      "comment": "Read file contents"
+    }
+  ]
+}
+```
+
+**Validation process:**
+
+1. Check for dangerous control characters (null bytes)
+2. Detect PowerShell vs Bash syntax
+3. Parse command with AST-based validator
+4. Check each command against allowlist patterns
+5. Block pipelines, redirects, and substitutions
+
+<Note>
+  Compound commands like `git status && git log` are allowed if **all parts** match safe patterns.
+</Note>
+
+### MCP Tool Filtering
+
+MCP tools are filtered by pattern matching against tool names:
+
+```typescript
+// Example MCP patterns
+{
+  "allowedMcpPatterns": [
+    "^list",      // Allow list operations
+    "^get",       // Allow read operations
+    "^search"     // Allow search operations
+  ]
+}
+```
+
+For source-specific permissions, patterns are automatically scoped:
+
+```typescript
+// User writes: "list"
+// System converts to: "mcp__<sourceSlug>__.*list"
+// Prevents cross-source pattern leakage
+```
+
+## Ask to Edit Mode
+
+**Ask to Edit** is the default mode. The agent prompts for approval before:
+
+- Running bash commands
+- Modifying files (Write, Edit)
+- Making non-GET API requests
+- Calling write-capable MCP tools
+
+### User Experience
+
+When approval is needed:
+
+1. Agent pauses execution
+2. Shows approval dialog with command details
+3. User approves or rejects
+4. Agent continues or stops based on response
+
+<Note>
+  Approval prompts **block the agent** until user responds. This ensures you maintain control over dangerous operations.
+</Note>
+
+## Execute Mode (Allow All)
+
+**Execute mode** removes all safety checks. Use this when:
+
+- You fully trust the agent's plan
+- You're implementing well-defined changes
+- You want maximum automation
+- You're working in a sandboxed environment
+
+<Warning>
+  Execute mode skips **all permission checks**. The agent can modify any file, run any command, and call any tool without prompting.
+</Warning>
+
+### When to Use
+
+```typescript
+// Good use cases:
+✅ "Implement the feature we discussed" (trusted plan)
+✅ "Fix all TypeScript errors" (well-scoped)
+✅ "Update dependencies" (automated task)
+
+// Risky use cases:
+⚠️ "Try to fix the bug" (exploration, unknown changes)
+⚠️ "Analyze and refactor" (open-ended)
+⚠️ First interaction with untested agent (unknown behavior)
+```
+
+## Cycling Modes with SHIFT+TAB
+
+Press **SHIFT+TAB** to cycle through modes in order:
+
+```
+Explore → Ask to Edit → Execute → Explore → ...
+```
+
+### Implementation
+
+```typescript
+// From mode-manager.ts
+export function cyclePermissionMode(
+  sessionId: string,
+  enabledModes?: PermissionMode[]
+): PermissionMode {
+  const currentMode = getPermissionMode(sessionId);
+  const modes = enabledModes || ['safe', 'ask', 'allow-all'];
+  const currentIndex = modes.indexOf(currentMode);
+  
+  const nextIndex = (currentIndex + 1) % modes.length;
+  const nextMode = modes[nextIndex];
+  
+  setPermissionMode(sessionId, nextMode, { changedBy: 'user' });
+  return nextMode;
+}
+```
+
+### Custom Mode Cycles
+
+You can configure which modes are available:
+
+```typescript
+// Only cycle between Explore and Ask
+const modes: PermissionMode[] = ['safe', 'ask'];
+cyclePermissionMode(sessionId, modes);
+```
+
+## Per-Session State
+
+Each session maintains **independent mode state**:
+
+```typescript
+export interface ModeState {
+  sessionId: string;
+  permissionMode: PermissionMode;
+  previousPermissionMode?: PermissionMode;
+  modeVersion: number;              // Incremented on each change
+  lastChangedAt: string;            // ISO timestamp
+  lastChangedBy: PermissionModeChangedBy; // 'user' | 'system' | 'restore'
+}
+```
+
+### State Persistence
+
+Mode state is saved to `~/.craft-agent/sessions/{sessionId}.json` and restored on app restart:
+
+```json
+{
+  "permissionMode": "ask",
+  "previousPermissionMode": "safe",
+  "modeVersion": 3,
+  "lastChangedAt": "2026-03-04T10:30:00.000Z",
+  "lastChangedBy": "user"
+}
+```
+
+<Note>
+  Sessions remember their last mode. Opening a session always restores its previous permission mode.
+</Note>
+
+## API Reference
+
+### Get Current Mode
+
+```typescript
+import { getPermissionMode } from '@craft-agent/shared/agent';
+
+const mode = getPermissionMode(sessionId);
+// Returns: 'safe' | 'ask' | 'allow-all'
+```
+
+### Set Mode
+
+```typescript
+import { setPermissionMode } from '@craft-agent/shared/agent';
+
+setPermissionMode(sessionId, 'safe', {
+  changedBy: 'user',
+  changedAt: new Date().toISOString()
+});
+```
+
+### Subscribe to Changes
+
+```typescript
+import { subscribeModeChanges } from '@craft-agent/shared/agent';
+
+const unsubscribe = subscribeModeChanges(sessionId, () => {
+  const newMode = getPermissionMode(sessionId);
+  console.log('Mode changed to:', newMode);
+});
+
+// Later: clean up
+unsubscribe();
+```
+
+### Get Diagnostics
+
+```typescript
+import { getPermissionModeDiagnostics } from '@craft-agent/shared/agent';
+
+const diag = getPermissionModeDiagnostics(sessionId);
+// Returns: { permissionMode, previousPermissionMode, transitionDisplay, modeVersion, ... }
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Start with Ask" icon="hand">
+    Begin new tasks in Ask mode to review what the agent plans to do before execution.
+  </Card>
+  
+  <Card title="Use Explore for Discovery" icon="magnifying-glass">
+    Switch to Explore when investigating unfamiliar codebases or exploring data sources.
+  </Card>
+  
+  <Card title="Execute for Trusted Plans" icon="check">
+    Once you've approved a plan in Ask mode, switch to Execute for faster implementation.
+  </Card>
+  
+  <Card title="Review Mode Icons" icon="eye">
+    Always check the mode indicator before starting work to avoid unexpected behavior.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="wrench" href="/features/permissions/configuration">
+    Customize allowlists and rules via permissions.json
+  </Card>
+  
+  <Card title="Security Details" icon="lock" href="/features/permissions/security">
+    Learn about encryption, OAuth, and security architecture
+  </Card>
+</CardGroup>

@@ -1,0 +1,197 @@
+---
+title: Theme System Overview
+description: Understanding Craft Agent's flexible theme system with semantic colors and dark mode support
+---
+
+Craft Agent features a powerful theme system built on a **6-color semantic palette** that adapts to both light and dark modes. Themes control the appearance of the entire application, from backgrounds to UI components.
+
+## Architecture
+
+The theme system uses a cascading configuration model where themes can be defined at the **app level** and customized per workspace.
+
+<Note>
+  Theme configuration is stored in `~/.craft-agent/theme.json` for app-level customization.
+</Note>
+
+### 6-Color Semantic System
+
+Every theme is built around six core semantic colors that provide consistent meaning across the UI:
+
+<CardGroup cols={2}>
+  <Card title="background" icon="square">
+    Main application background color
+  </Card>
+  <Card title="foreground" icon="font">
+    Primary text and content color
+  </Card>
+  <Card title="accent" icon="palette">
+    Brand color (purple #8B5CF6) - used for Execute mode and primary actions
+  </Card>
+  <Card title="info" icon="circle-info">
+    Amber color for Ask mode, warnings, and informational states
+  </Card>
+  <Card title="success" icon="circle-check">
+    Green color for successful operations
+  </Card>
+  <Card title="destructive" icon="triangle-exclamation">
+    Red color for errors and destructive actions
+  </Card>
+</CardGroup>
+
+## Color Formats
+
+Craft Agent supports all modern CSS color formats:
+
+<CodeGroup>
+```json Hex Colors
+{
+  "accent": "#8b5cf6",
+  "background": "#faf9fb"
+}
+```
+
+```json OKLCH (Recommended)
+{
+  "accent": "oklch(0.58 0.22 293)",
+  "background": "oklch(0.98 0.003 265)"
+}
+```
+
+```json RGB/RGBA
+{
+  "accent": "rgb(139, 92, 246)",
+  "info": "rgba(245, 158, 11, 0.8)"
+}
+```
+
+```json HSL
+{
+  "accent": "hsl(262, 83%, 58%)"
+}
+```
+</CodeGroup>
+
+<Note>
+  **OKLCH is recommended** for perceptually uniform color manipulation and better color mixing in CSS.
+</Note>
+
+## Surface Colors
+
+In addition to semantic colors, themes can define **surface colors** for specific UI regions. All surface colors are optional and fall back to `background` if not specified:
+
+<ParamField path="paper" type="CSSColor">
+  AI messages, cards, and elevated content backgrounds
+</ParamField>
+
+<ParamField path="navigator" type="CSSColor">
+  Left sidebar background color
+</ParamField>
+
+<ParamField path="input" type="CSSColor">
+  Input field background color
+</ParamField>
+
+<ParamField path="popover" type="CSSColor">
+  Dropdowns, modals, and context menus (always solid, no transparency)
+</ParamField>
+
+<ParamField path="popoverSolid" type="CSSColor">
+  Guaranteed 100% opaque popover background (required for scenic mode)
+</ParamField>
+
+## Dark Mode Support
+
+Themes support optional dark mode overrides. When the system is in dark mode, colors from the `dark` object override the light mode values:
+
+```json theme.json
+{
+  "background": "oklch(0.98 0.003 265)",
+  "foreground": "oklch(0.185 0.01 270)",
+  "accent": "oklch(0.58 0.22 293)",
+  "dark": {
+    "background": "oklch(0.145 0.015 270)",
+    "foreground": "oklch(0.95 0.01 270)",
+    "accent": "oklch(0.65 0.22 293)"
+  }
+}
+```
+
+## Theme Modes
+
+Craft Agent supports two visual modes:
+
+### Solid Mode (Default)
+
+Traditional solid color backgrounds throughout the application.
+
+```json theme.json
+{
+  "mode": "solid",
+  "background": "oklch(0.98 0.003 265)"
+}
+```
+
+### Scenic Mode
+
+Full-window background image with glass panel effects for UI elements.
+
+```json theme.json
+{
+  "mode": "scenic",
+  "backgroundImage": "https://example.com/background.jpg",
+  "paper": "rgba(250, 249, 251, 0.8)",
+  "popoverSolid": "#faf9fb"
+}
+```
+
+<Note>
+  When using scenic mode, ensure `popoverSolid` is defined as a fully opaque color for proper rendering of dropdowns and modals.
+</Note>
+
+## Storage Locations
+
+Themes are stored in specific locations in the Craft Agent configuration directory:
+
+| Location | Purpose |
+|----------|----------|
+| `~/.craft-agent/theme.json` | App-level theme overrides |
+| `~/.craft-agent/themes/*.json` | Preset themes library |
+
+## Default Theme
+
+Craft Agent ships with a carefully designed default theme:
+
+<CodeGroup>
+```typescript Light Mode
+const DEFAULT_THEME = {
+  background: 'oklch(0.98 0.003 265)',
+  foreground: 'oklch(0.185 0.01 270)',
+  accent: 'oklch(0.58 0.22 293)',
+  info: 'oklch(0.75 0.16 70)',
+  success: 'oklch(0.55 0.17 145)',
+  destructive: 'oklch(0.58 0.24 28)',
+}
+```
+
+```typescript Dark Mode
+const DEFAULT_THEME_DARK = {
+  background: 'oklch(0.145 0.015 270)',
+  foreground: 'oklch(0.95 0.01 270)',
+  accent: 'oklch(0.65 0.22 293)',
+  info: 'oklch(0.78 0.14 70)',
+  success: 'oklch(0.60 0.17 145)',
+  destructive: 'oklch(0.65 0.22 28)',
+}
+```
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Customize Themes" icon="palette" href="/features/themes/customization">
+    Learn how to create and customize your own themes
+  </Card>
+  <Card title="Theme API" icon="code" href="/features/themes/overview">
+    Explore the complete theme configuration API
+  </Card>
+</CardGroup>

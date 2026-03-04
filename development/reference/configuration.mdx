@@ -1,0 +1,223 @@
+---
+title: Configuration
+description: Understanding Craft Agents configuration storage, structure, and management
+icon: gear
+---
+
+Craft Agents stores all configuration data in a structured directory at `~/.craft-agent/`. This includes workspaces, sessions, sources, credentials, and preferences.
+
+## Configuration Directory Structure
+
+The main configuration directory is organized as follows:
+
+```
+~/.craft-agent/
+├── config.json              # Main config (workspaces, LLM connections)
+├── credentials.enc          # Encrypted credentials (AES-256-GCM)
+├── preferences.json         # User preferences
+├── theme.json               # App-level theme
+└── workspaces/
+    └── {workspace-id}/
+        ├── config.json      # Workspace settings
+        ├── theme.json       # Workspace theme override
+        ├── automations.json  # Event-driven automations
+        ├── sessions/        # Session data (JSONL)
+        ├── sources/         # Connected sources
+        ├── skills/          # Custom skills
+        └── statuses/        # Status configuration
+```
+
+## Main Configuration Files
+
+### config.json
+
+The root configuration file manages global settings and workspace metadata:
+
+<CodeGroup>
+```json config.json
+{
+  "version": "1.0",
+  "workspaces": [
+    {
+      "id": "workspace-123",
+      "name": "My Workspace",
+      "defaultLlmProvider": "anthropic",
+      "created": "2024-01-01T00:00:00.000Z"
+    }
+  ],
+  "llmConnections": [
+    {
+      "id": "conn-1",
+      "provider": "anthropic",
+      "authType": "apiKey"
+    }
+  ]
+}
+```
+</CodeGroup>
+
+<Note>
+The `config.json` file is loaded from `packages/shared/src/config/storage.ts` and supports multiple workspaces with separate configurations.
+</Note>
+
+### credentials.enc
+
+All sensitive credentials (API keys, OAuth tokens) are stored in an AES-256-GCM encrypted file:
+
+- **Encryption**: AES-256-GCM with a key derived from system-specific entropy
+- **Location**: `~/.craft-agent/credentials.enc`
+- **Access**: Managed through the `CredentialManager` class in `packages/shared/src/credentials/`
+- **Scope**: Per-workspace and per-source credential isolation
+
+<Warning>
+Never manually edit or commit `credentials.enc`. All credential operations should go through the `CredentialManager` API.
+</Warning>
+
+### preferences.json
+
+User preferences control application behavior:
+
+<Accordion title="Default Preferences">
+```json
+{
+  "notificationsEnabled": true,
+  "colorTheme": "default",
+  "autoCapitalisation": true,
+  "sendMessageKey": "enter",
+  "spellCheck": false,
+  "keepAwakeWhileRunning": false,
+  "richToolDescriptions": true
+}
+```
+
+These defaults are defined in `apps/electron/resources/config-defaults.json`.
+</Accordion>
+
+## Workspace Configuration
+
+Each workspace has its own isolated configuration directory at `~/.craft-agent/workspaces/{workspace-id}/`.
+
+### Workspace config.json
+
+<CodeGroup>
+```json workspace/config.json
+{
+  "id": "workspace-123",
+  "name": "My Workspace",
+  "defaultLlmProvider": "anthropic",
+  "permissionMode": "safe",
+  "thinkingLevel": "think",
+  "cyclablePermissionModes": ["safe", "allow-all"]
+}
+```
+</CodeGroup>
+
+### Permission Modes
+
+Workspaces support three permission modes:
+
+<ParamField path="safe" type="string" default>
+  **Explore mode** - Read-only, blocks all write operations
+</ParamField>
+
+<ParamField path="ask" type="string">
+  **Ask to Edit mode** - Prompts for approval on write operations
+</ParamField>
+
+<ParamField path="allow-all" type="string">
+  **Auto mode** - Auto-approves all commands (use with caution)
+</ParamField>
+
+<Note>
+Press **SHIFT+TAB** in the chat interface to cycle through permission modes.
+</Note>
+
+### Theme Configuration
+
+Themes cascade from app-level to workspace-level:
+
+<CodeGroup>
+```json ~/.craft-agent/theme.json
+{
+  "colors": {
+    "background": "#1a1a1a",
+    "foreground": "#ffffff",
+    "accent": "#8B5CF6",
+    "info": "#3b82f6",
+    "success": "#10b981",
+    "destructive": "#ef4444"
+  },
+  "dark": {
+    "background": "#0a0a0a"
+  }
+}
+```
+
+```json workspace/theme.json
+{
+  "colors": {
+    "accent": "#8B5CF6"
+  }
+}
+```
+</CodeGroup>
+
+The workspace theme overrides the app-level theme. Theme resolution is handled in `packages/shared/src/config/theme.ts`.
+
+## Sources Configuration
+
+Sources (MCP servers, APIs, local filesystems) are stored per-workspace:
+
+```
+~/.craft-agent/workspaces/{id}/sources/{source-slug}/
+├── config.json              # Source configuration
+├── guide.md                 # User-facing documentation
+└── .credential-cache.json   # Decrypted credentials for Bridge MCP (0600 perms)
+```
+
+<Accordion title="Example Source Config">
+```json
+{
+  "type": "mcp",
+  "name": "GitHub",
+  "slug": "github",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-github"],
+  "env": {
+    "GITHUB_TOKEN": "credential:github-token"
+  }
+}
+```
+
+Credentials prefixed with `credential:` are resolved from the encrypted store.
+</Accordion>
+
+## Session Storage
+
+Sessions are persisted as JSONL files:
+
+- **Location**: `~/.craft-agent/workspaces/{id}/sessions/{session-id}.jsonl`
+- **Format**: One JSON object per line (append-only)
+- **Persistence**: Debounced writes with 500ms queue (see `packages/shared/src/sessions/persistence-queue.ts`)
+
+## Configuration File Watching
+
+Craft Agents watches configuration files for live updates:
+
+- `config.json` - Global and workspace settings
+- `theme.json` - App and workspace themes
+- `permissions.json` - Permission rules
+- `sources/*/config.json` - Source configurations
+
+The watcher is implemented in `packages/shared/src/config/watcher.ts` and `apps/electron/src/main/lib/config-watcher.ts`.
+
+## Related Files
+
+<CardGroup cols={2}>
+  <Card title="Storage Implementation" icon="code" href="https://github.com/lukilabs/craft-agents-oss/blob/main/packages/shared/src/config/storage.ts">
+    View the configuration storage code
+  </Card>
+  <Card title="Credentials Manager" icon="lock" href="https://github.com/lukilabs/craft-agents-oss/blob/main/packages/shared/src/credentials/">
+    See how credentials are encrypted and managed
+  </Card>
+</CardGroup>

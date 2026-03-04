@@ -1,0 +1,387 @@
+---
+title: 'Craft MCP Server'
+description: 'Access your Craft documents, blocks, collections, and tasks through the Craft MCP server'
+---
+
+<Info>
+The Craft MCP server provides **32+ tools** for working with Craft documents, blocks, collections, search, and tasks.
+</Info>
+
+## Overview
+
+The **Craft MCP Server** is a remote MCP server hosted at `https://agents.craft.do/docs/mcp` that exposes your Craft workspace through the Model Context Protocol. It provides comprehensive access to documents, blocks, collections, search, and task management.
+
+### Key Features
+
+<CardGroup cols={2}>
+  <Card title="32+ Tools" icon="toolbox">
+    Comprehensive API covering all Craft features
+  </Card>
+  <Card title="OAuth 2.0" icon="shield-check">
+    Secure authentication with your Craft account
+  </Card>
+  <Card title="Real-time Access" icon="bolt">
+    Direct access to your live Craft workspace
+  </Card>
+  <Card title="Document Search" icon="magnifying-glass">
+    Full-text search across all your documents
+  </Card>
+</CardGroup>
+
+## Setup
+
+<Steps>
+  <Step title="Tell the agent">
+    Simply say: *"Add Craft as a source"*
+  </Step>
+  <Step title="OAuth flow">
+    The agent will create the source and trigger OAuth authentication
+  </Step>
+  <Step title="Authorize">
+    Authorize Craft Agents to access your workspace in the browser
+  </Step>
+  <Step title="Start using">
+    Once connected, the agent can access your Craft documents
+  </Step>
+</Steps>
+
+<Note>
+The agent will automatically configure the source with the correct MCP URL and OAuth settings.
+</Note>
+
+## Source Configuration
+
+Here's what the Craft MCP source configuration looks like:
+
+```json config.json
+{
+  "id": "craft_a1b2c3d4",
+  "name": "Craft",
+  "slug": "craft",
+  "provider": "craft",
+  "type": "mcp",
+  "icon": "https://cdn.craft.do/assets/craft-logo.png",
+  "tagline": "Document editor, notes, and knowledge base",
+  "mcp": {
+    "transport": "http",
+    "url": "https://agents.craft.do/docs/mcp"
+  },
+  "authType": "oauth",
+  "oauth": {
+    "authorizationUrl": "https://api.craft.do/oauth/authorize",
+    "tokenUrl": "https://api.craft.do/oauth/token",
+    "clientId": "craft-agents",
+    "scope": "documents:read documents:write blocks:read blocks:write"
+  }
+}
+```
+
+## Available Tools
+
+The Craft MCP server exposes the following tool categories:
+
+### Document Management
+
+<CodeGroup>
+```javascript List Documents
+mcp__craft__listDocuments({
+  spaceId?: string,
+  folderId?: string,
+  limit?: number
+})
+```
+
+```javascript Get Document
+mcp__craft__getDocument({
+  documentId: string
+})
+```
+
+```javascript Create Document
+mcp__craft__createDocument({
+  title: string,
+  content?: string,
+  spaceId?: string,
+  folderId?: string
+})
+```
+
+```javascript Update Document
+mcp__craft__updateDocument({
+  documentId: string,
+  title?: string,
+  content?: string
+})
+```
+
+```javascript Delete Document
+mcp__craft__deleteDocument({
+  documentId: string
+})
+```
+</CodeGroup>
+
+### Block Operations
+
+Craft documents are composed of blocks. Each block represents a piece of content:
+
+<CodeGroup>
+```javascript List Blocks
+mcp__craft__listBlocks({
+  documentId: string
+})
+```
+
+```javascript Get Block
+mcp__craft__getBlock({
+  blockId: string
+})
+```
+
+```javascript Create Block
+mcp__craft__createBlock({
+  documentId: string,
+  type: 'text' | 'heading' | 'list' | 'code',
+  content: string,
+  afterBlockId?: string
+})
+```
+
+```javascript Update Block
+mcp__craft__updateBlock({
+  blockId: string,
+  content?: string,
+  type?: string
+})
+```
+
+```javascript Delete Block
+mcp__craft__deleteBlock({
+  blockId: string
+})
+```
+</CodeGroup>
+
+### Collections
+
+Collections are groups of related documents:
+
+<CodeGroup>
+```javascript List Collections
+mcp__craft__listCollections({
+  spaceId?: string
+})
+```
+
+```javascript Get Collection
+mcp__craft__getCollection({
+  collectionId: string
+})
+```
+
+```javascript Create Collection
+mcp__craft__createCollection({
+  name: string,
+  spaceId?: string
+})
+```
+
+```javascript Add to Collection
+mcp__craft__addToCollection({
+  collectionId: string,
+  documentId: string
+})
+```
+</CodeGroup>
+
+### Search
+
+Full-text search across your Craft workspace:
+
+```javascript Search Documents
+mcp__craft__searchDocuments({
+  query: string,
+  spaceId?: string,
+  limit?: number
+})
+```
+
+<Note>
+Search supports natural language queries and returns ranked results based on relevance.
+</Note>
+
+### Task Management
+
+Manage tasks within Craft documents:
+
+<CodeGroup>
+```javascript List Tasks
+mcp__craft__listTasks({
+  documentId?: string,
+  status?: 'pending' | 'completed',
+  assignee?: string
+})
+```
+
+```javascript Create Task
+mcp__craft__createTask({
+  title: string,
+  documentId?: string,
+  dueDate?: string,
+  assignee?: string
+})
+```
+
+```javascript Update Task
+mcp__craft__updateTask({
+  taskId: string,
+  title?: string,
+  status?: 'pending' | 'completed',
+  dueDate?: string
+})
+```
+
+```javascript Complete Task
+mcp__craft__completeTask({
+  taskId: string
+})
+```
+</CodeGroup>
+
+## Usage Examples
+
+Here are some common workflows with the Craft MCP server:
+
+### Creating a New Document
+
+```
+"Create a new document in Craft called 'Meeting Notes' with a section for attendees and agenda"
+```
+
+The agent will:
+1. Call `mcp__craft__createDocument` to create the document
+2. Call `mcp__craft__createBlock` to add blocks for attendees and agenda
+3. Return the document ID and URL
+
+### Searching Documents
+
+```
+"Search my Craft documents for anything related to the Q4 roadmap"
+```
+
+The agent will:
+1. Call `mcp__craft__searchDocuments` with query "Q4 roadmap"
+2. Return ranked results with document titles and snippets
+3. Offer to open specific documents for more details
+
+### Managing Tasks
+
+```
+"Show me all pending tasks in my Craft workspace"
+```
+
+The agent will:
+1. Call `mcp__craft__listTasks` with status "pending"
+2. Display tasks grouped by document or due date
+3. Offer to mark tasks as complete or update them
+
+### Organizing with Collections
+
+```
+"Create a collection for all project-related documents and add the last 5 documents I created"
+```
+
+The agent will:
+1. Call `mcp__craft__createCollection` with name "Projects"
+2. Call `mcp__craft__listDocuments` to find recent documents
+3. Call `mcp__craft__addToCollection` for each relevant document
+
+## Permissions
+
+Craft MCP tools are automatically configured for Explore mode safety:
+
+**Allowed in Explore mode:**
+- All `list*`, `get*`, `search*` operations (read-only)
+- Viewing documents, blocks, collections, and tasks
+
+**Requires Ask to Edit or Auto mode:**
+- `create*`, `update*`, `delete*` operations
+- Modifying documents, blocks, or collections
+- Creating or completing tasks
+
+See the `permissions.json` configuration in the Craft source for details.
+
+## Rate Limits
+
+The Craft MCP server has the following rate limits:
+
+- **100 requests per minute** per workspace
+- **1000 requests per hour** per workspace
+- **10,000 requests per day** per workspace
+
+<Warning>
+If you exceed rate limits, the server will return `429 Too Many Requests`. The agent will automatically back off and retry.
+</Warning>
+
+## Troubleshooting
+
+### Connection Failed
+
+```
+MCP connection failed: Server unreachable
+```
+
+**Solutions:**
+1. Check your internet connection
+2. Verify the MCP URL is correct: `https://agents.craft.do/docs/mcp`
+3. Try reconnecting the source
+
+### Authentication Expired
+
+```
+Authentication expired or was revoked
+```
+
+**Solutions:**
+1. Re-authenticate by triggering OAuth flow again
+2. Ask the agent: *"Reconnect to Craft"*
+3. Check that your Craft account is active
+
+### No Documents Found
+
+```
+No documents found in workspace
+```
+
+**Possible causes:**
+1. Your workspace is empty
+2. OAuth scope doesn't include document access
+3. Documents are in a space you don't have access to
+
+## Best Practices
+
+<Steps>
+  <Step title="Use specific queries">
+    When searching, use specific keywords for better results
+  </Step>
+  <Step title="Batch operations">
+    When creating multiple documents or blocks, batch operations for efficiency
+  </Step>
+  <Step title="Handle errors gracefully">
+    Check for rate limits and authentication errors in workflows
+  </Step>
+  <Step title="Cache document IDs">
+    Store frequently accessed document IDs to reduce lookups
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="MCP Overview" icon="network-wired" href="/integrations/mcp/overview">
+    Learn more about the Model Context Protocol
+  </Card>
+  <Card title="Custom MCP Servers" icon="code" href="/integrations/mcp/custom-servers">
+    Add other MCP servers to extend functionality
+  </Card>
+</CardGroup>

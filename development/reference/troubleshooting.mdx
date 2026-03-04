@@ -1,0 +1,353 @@
+---
+title: Troubleshooting
+description: Debug tools, log locations, and solutions to common issues
+icon: wrench
+---
+
+This guide covers debugging techniques, log file locations, and solutions to common issues you may encounter while using or developing Craft Agents.
+
+## Debug Mode
+
+Debug mode enables verbose logging to help diagnose issues. It's automatically enabled when running from source, or can be manually enabled in packaged builds.
+
+### Enabling Debug Mode
+
+To launch the packaged app with debug logging, use the `--debug` flag (note the double dash separator):
+
+<CodeGroup>
+```bash macOS
+/Applications/Craft\ Agents.app/Contents/MacOS/Craft\ Agents -- --debug
+```
+
+```powershell Windows
+& "$env:LOCALAPPDATA\Programs\@craft-agentelectron\Craft Agents.exe" -- --debug
+```
+
+```bash Linux
+./craft-agents -- --debug
+```
+</CodeGroup>
+
+<Note>
+The double dash (`--`) separates Electron's args from the app's args. The second `--debug` is passed to your application.
+</Note>
+
+### Debug Mode Detection
+
+Debug mode is automatically enabled in these scenarios:
+
+- Running from source (`bun run electron:start` or `electron .`)
+- Packaged app launched with `--debug` flag
+
+The detection logic is in `apps/electron/src/main/logger.ts`:
+
+```typescript
+export const isDebugMode = !app?.isPackaged || process.argv.includes('--debug')
+```
+
+## Log File Locations
+
+Log files are written to platform-specific directories when debug mode is enabled:
+
+<ParamField path="macOS" type="string">
+  `~/Library/Logs/@craft-agent/electron/main.log`
+</ParamField>
+
+<ParamField path="Windows" type="string">
+  `%APPDATA%\@craft-agent\electron\logs\main.log`
+</ParamField>
+
+<ParamField path="Linux" type="string">
+  `~/.config/@craft-agent/electron/logs/main.log`
+</ParamField>
+
+<Warning>
+In production mode (packaged app without `--debug`), both file and console logging are disabled to reduce noise.
+</Warning>
+
+### Log Format
+
+Logs are written in JSON format for agent-parseability:
+
+```json
+{
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "level": "info",
+  "scope": "main",
+  "message": ["Session created", {"sessionId": "abc123"}]
+}
+```
+
+### Log Rotation
+
+Log files automatically rotate when they exceed 5MB in size:
+
+```typescript
+log.transports.file.maxSize = 5 * 1024 * 1024 // 5MB
+```
+
+## Scoped Loggers
+
+Craft Agents uses scoped loggers for different subsystems:
+
+<Accordion title="Available Logger Scopes">
+- **main** - Main process lifecycle and general operations
+- **session** - Session creation, persistence, and management
+- **ipc** - Inter-process communication between main and renderer
+- **window** - Window management and deep linking
+- **agent** - Agent execution and tool calls
+- **search** - Search indexing and queries
+
+Import and use scoped loggers:
+
+```typescript
+import { sessionLog } from './logger'
+
+sessionLog.info('Session started', { sessionId })
+sessionLog.error('Failed to save session', error)
+```
+</Accordion>
+
+## Common Issues
+
+### MCP Server Connection Failures
+
+<Accordion title="Symptom: Source shows as disconnected">
+**Possible Causes:**
+
+1. **Invalid command or path** - Check that the MCP server command is correct
+2. **Missing dependencies** - Ensure all required packages are installed
+3. **Credential issues** - Verify credentials are set correctly
+
+**Solution:**
+
+```bash
+# Test MCP server manually
+npx -y @modelcontextprotocol/server-github
+
+# Check environment variables
+echo $GITHUB_TOKEN
+```
+
+View logs for the specific source at:
+```
+~/.craft-agent/workspaces/{workspace-id}/sources/{source-slug}/
+```
+</Accordion>
+
+### Sessions Not Persisting
+
+<Accordion title="Symptom: Session history is lost after restart">
+**Possible Causes:**
+
+1. **Disk write permissions** - Check permissions on `~/.craft-agent/`
+2. **Persistence queue failure** - Look for errors in logs
+
+**Solution:**
+
+```bash
+# Check directory permissions
+ls -la ~/.craft-agent/workspaces/*/sessions/
+
+# Should show read/write for user
+drwxr-xr-x  sessions/
+```
+
+Sessions are written with a 500ms debounce. Check `packages/shared/src/sessions/persistence-queue.ts` for the queue implementation.
+</Accordion>
+
+### OAuth Authentication Loops
+
+<Accordion title="Symptom: OAuth keeps redirecting without completing">
+**Possible Causes:**
+
+1. **Redirect URI mismatch** - OAuth app settings don't match `craftagents://auth-callback`
+2. **State parameter mismatch** - Security token validation failing
+
+**Solution:**
+
+Verify OAuth app configuration:
+- **Redirect URI**: Must be exactly `craftagents://auth-callback`
+- **Scopes**: Ensure requested scopes are authorized
+
+Check deep link handler logs:
+```bash
+grep "auth-callback" ~/Library/Logs/@craft-agent/electron/main.log
+```
+</Accordion>
+
+### Tool Permission Errors
+
+<Accordion title="Symptom: Tools are blocked unexpectedly">
+**Possible Causes:**
+
+1. **Permission mode is 'safe'** - Read-only mode blocks write operations
+2. **Custom permissions.json rules** - Workspace or source has restrictive rules
+
+**Solution:**
+
+1. Check current permission mode (should show in UI)
+2. Press **SHIFT+TAB** to cycle through modes
+3. Review permission rules:
+
+```bash
+cat ~/.craft-agent/workspaces/{workspace-id}/permissions.json
+cat ~/.craft-agent/workspaces/{workspace-id}/sources/{source-slug}/permissions.json
+```
+
+Permission rules are defined in `packages/shared/src/agent/permissions-config.ts`.
+</Accordion>
+
+### Configuration Not Updating
+
+<Accordion title="Symptom: Changes to config.json aren't reflected">
+**Possible Causes:**
+
+1. **Invalid JSON syntax** - Parser silently fails on malformed JSON
+2. **File watcher not running** - Config watcher may have crashed
+3. **Cache not cleared** - In-memory config cache needs refresh
+
+**Solution:**
+
+```bash
+# Validate JSON syntax
+jq . ~/.craft-agent/config.json
+
+# Restart the app to reload config
+# Or use the config validator tool:
+```
+
+The config validator is available as a session-scoped tool via `config_validate` (see `packages/session-tools-core/src/handlers/config-validate.ts`).
+</Accordion>
+
+### Large Response Timeouts
+
+<Accordion title="Symptom: Tool responses timeout or get truncated">
+**Explanation:**
+
+Tool responses exceeding ~60KB are automatically summarized using Claude Haiku to prevent context overflow.
+
+**Solution:**
+
+This is expected behavior. The `_intent` field is injected into MCP tool schemas to preserve summarization focus. See the implementation in `packages/shared/src/agent/craft-agent.ts`.
+
+To disable summarization for specific tools, adjust the threshold or implement custom handling.
+</Accordion>
+
+## Development Debugging
+
+### Running in Development Mode
+
+Development mode enables hot reload and full debugging:
+
+```bash
+# Hot reload (recommended)
+bun run electron:dev
+
+# Build and run
+bun run electron:start
+
+# Type checking
+bun run typecheck:all
+```
+
+### Inspecting IPC Communication
+
+All IPC channels are defined in `apps/electron/src/shared/types.ts`. To debug IPC:
+
+1. Enable debug mode
+2. Check logs for `[ipc]` scope entries
+3. Look for request/response pairs
+
+```typescript
+import { ipcLog } from './logger'
+
+ipcLog.debug('IPC request', { channel, data })
+ipcLog.debug('IPC response', { channel, result })
+```
+
+### Renderer DevTools
+
+Open Chrome DevTools in the renderer process:
+
+```typescript
+// In development, DevTools open automatically
+if (isDebugMode) {
+  window.webContents.openDevTools()
+}
+```
+
+Or press **Cmd+Option+I** (macOS) / **Ctrl+Shift+I** (Windows/Linux).
+
+### Memory Leaks
+
+Profile memory usage in the main process:
+
+```typescript
+const usage = process.memoryUsage()
+console.log('Heap Used:', Math.round(usage.heapUsed / 1024 / 1024), 'MB')
+```
+
+For renderer process memory, use Chrome DevTools Memory Profiler.
+
+## Environment Variables
+
+OAuth integrations require credentials baked into the build:
+
+<CodeGroup>
+```bash .env
+MICROSOFT_OAUTH_CLIENT_ID=your-client-id
+SLACK_OAUTH_CLIENT_ID=your-slack-client-id
+SLACK_OAUTH_CLIENT_SECRET=your-slack-client-secret
+```
+</CodeGroup>
+
+<Note>
+Google OAuth credentials are NOT baked into the build. Users provide their own credentials via source configuration.
+</Note>
+
+## Security Debugging
+
+### Credential Storage
+
+Credentials are encrypted using AES-256-GCM:
+
+```bash
+# View encrypted credentials file (binary)
+file ~/.craft-agent/credentials.enc
+
+# Credentials can only be decrypted by CredentialManager
+# See: packages/shared/src/credentials/
+```
+
+### Local MCP Server Isolation
+
+When spawning local MCP servers (stdio transport), sensitive environment variables are filtered to prevent credential leakage:
+
+**Blocked variables:**
+- `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`
+- `GITHUB_TOKEN`, `GH_TOKEN`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`
+- `STRIPE_SECRET_KEY`, `NPM_TOKEN`
+
+To explicitly pass an env var to a specific MCP server, use the `env` field in the source config.
+
+## Getting Help
+
+If you're still experiencing issues:
+
+1. **Check logs** in the platform-specific directory
+2. **Search existing issues** on [GitHub](https://github.com/lukilabs/craft-agents-oss/issues)
+3. **Report a bug** with logs and reproduction steps
+4. **Ask in Discord** for community support
+
+## Related Files
+
+<CardGroup cols={2}>
+  <Card title="Logger Implementation" icon="code" href="https://github.com/lukilabs/craft-agents-oss/blob/main/apps/electron/src/main/logger.ts">
+    View the logging code
+  </Card>
+  <Card title="Security Guidelines" icon="shield" href="https://github.com/lukilabs/craft-agents-oss/blob/main/SECURITY.md">
+    Report security vulnerabilities
+  </Card>
+</CardGroup>

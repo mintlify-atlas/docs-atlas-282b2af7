@@ -1,0 +1,411 @@
+---
+title: 'MCP Servers'
+description: 'Connect Model Context Protocol servers to your workspace'
+icon: 'server'
+---
+
+## What is MCP?
+
+The Model Context Protocol (MCP) is a standard for AI agents to interact with external tools, data sources, and services. MCP servers expose:
+
+- **Tools** - Functions the agent can call
+- **Prompts** - Reusable prompt templates
+- **Resources** - Files, data, and context
+
+<Note>
+  Craft Agents uses the official `@modelcontextprotocol/sdk` for MCP connections.
+</Note>
+
+## Transport Types
+
+MCP servers support three transport mechanisms:
+
+<Accordion title="HTTP Transport" icon="globe">
+  Remote servers accessed via HTTP endpoints. Most common for cloud-hosted MCP servers.
+  
+  ```typescript
+  {
+    "transport": "http",
+    "url": "https://mcp.linear.app/mcp",
+    "authType": "oauth"
+  }
+  ```
+  
+  URL normalization:
+  - Trailing slashes are removed
+  - `/mcp` suffix is added automatically
+  - Example: `https://api.example.com` → `https://api.example.com/mcp`
+</Accordion>
+
+<Accordion title="SSE Transport (Server-Sent Events)" icon="stream">
+  HTTP-based streaming transport for real-time updates.
+  
+  ```typescript
+  {
+    "transport": "sse",
+    "url": "https://mcp.example.com/sse",
+    "authType": "bearer"
+  }
+  ```
+  
+  URLs ending in `/sse` are automatically detected as SSE transport.
+</Accordion>
+
+<Accordion title="Stdio Transport (Local Subprocess)" icon="terminal">
+  Spawns a local process and communicates via stdin/stdout. Used for local MCP servers.
+  
+  ```typescript
+  {
+    "transport": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/data"],
+    "env": {
+      "NODE_ENV": "production"
+    }
+  }
+  ```
+  
+  <Warning>
+    Stdio sources are filtered out when "Local MCP Servers" is disabled in workspace settings.
+  </Warning>
+</Accordion>
+
+## Authentication Types
+
+MCP sources support three authentication methods:
+
+### OAuth Authentication
+
+Full OAuth 2.0 flow with automatic token refresh:
+
+```json
+{
+  "type": "mcp",
+  "mcp": {
+    "transport": "http",
+    "url": "https://mcp.linear.app",
+    "authType": "oauth",
+    "clientId": "your-client-id"
+  }
+}
+```
+
+Credentials stored in encrypted format:
+- Access token
+- Refresh token
+- Expiration time
+- Client ID
+
+<Steps>
+  <Step title="Trigger OAuth Flow">
+    Agent calls `source_oauth_trigger` tool or user initiates from UI
+  </Step>
+  
+  <Step title="Browser Authentication">
+    User authenticates in browser and authorizes the connection
+  </Step>
+  
+  <Step title="Token Storage">
+    Tokens encrypted and saved to `~/.craft-agent/credentials.enc`
+  </Step>
+  
+  <Step title="Automatic Refresh">
+    Tokens refreshed automatically when they expire
+  </Step>
+</Steps>
+
+### Bearer Token Authentication
+
+Static API tokens passed in Authorization header:
+
+```json
+{
+  "type": "mcp",
+  "mcp": {
+    "transport": "http",
+    "url": "https://api.example.com/mcp",
+    "authType": "bearer"
+  }
+}
+```
+
+Tokens stored securely and injected automatically:
+
+```http
+Authorization: Bearer your-token-here
+```
+
+### No Authentication
+
+Public MCP servers that don't require authentication:
+
+```json
+{
+  "type": "mcp",
+  "mcp": {
+    "transport": "http",
+    "url": "https://public-api.example.com/mcp",
+    "authType": "none"
+  }
+}
+```
+
+## MCP Client Implementation
+
+Craft Agents uses `CraftMcpClient` to manage connections:
+
+<CodeGroup>
+```typescript HTTP Client
+import { CraftMcpClient } from '@craft-agent/shared/mcp';
+
+const client = new CraftMcpClient({
+  transport: 'http',
+  url: 'https://mcp.linear.app/mcp',
+  headers: {
+    'Authorization': 'Bearer token123'
+  }
+});
+
+// Connect and verify
+await client.connect();
+
+// List available tools
+const tools = await client.listTools();
+
+// Call a tool
+const result = await client.callTool('createIssue', {
+  title: 'Bug in login',
+  teamId: 'ENG'
+});
+```
+
+```typescript Stdio Client
+import { CraftMcpClient } from '@craft-agent/shared/mcp';
+
+const client = new CraftMcpClient({
+  transport: 'stdio',
+  command: 'npx',
+  args: ['-y', '@modelcontextprotocol/server-filesystem', '/data'],
+  env: {
+    'API_KEY': 'secret123'
+  }
+});
+
+await client.connect();
+const tools = await client.listTools();
+```
+</CodeGroup>
+
+<Note>
+  Sensitive environment variables (`ANTHROPIC_API_KEY`, `AWS_ACCESS_KEY_ID`, etc.) are automatically filtered out when spawning stdio processes.
+</Note>
+
+## McpClientPool
+
+All MCP connections are managed by a centralized pool in the main Electron process:
+
+```typescript
+import { McpClientPool } from '@craft-agent/shared/mcp';
+
+const pool = new McpClientPool({
+  debug: (msg) => console.log(msg),
+  workspaceRootPath: '~/.craft-agent/workspaces/xxx',
+  sessionPath: '~/.craft-agent/workspaces/xxx/sessions/yyy'
+});
+
+// Connect sources
+await pool.sync({
+  'linear': {
+    type: 'http',
+    url: 'https://mcp.linear.app/mcp',
+    headers: { 'Authorization': 'Bearer token' }
+  },
+  'github': {
+    type: 'http',
+    url: 'https://mcp.github.com/mcp',
+    headers: { 'Authorization': 'Bearer ghtoken' }
+  }
+});
+
+// Get available tools
+const slugs = pool.getConnectedSlugs(); // ['linear', 'github']
+const linearTools = pool.getTools('linear');
+
+// Execute tool via proxy
+const result = await pool.callTool('mcp__linear__createIssue', {
+  title: 'Bug report',
+  teamId: 'ENG'
+});
+```
+
+### Proxy Tool Naming
+
+The pool creates namespaced proxy tools:
+
+```
+mcp__{sourceSlug}__{originalToolName}
+```
+
+Examples:
+- `mcp__linear__createIssue`
+- `mcp__github__createPullRequest`
+- `mcp__notion__searchPages`
+
+This prevents name collisions when multiple sources expose similar tools.
+
+## Connecting MCP Servers
+
+<Steps>
+  <Step title="Create Source Configuration">
+    ```typescript
+    import { createSource } from '@craft-agent/shared/sources';
+    
+    await createSource(workspaceRootPath, {
+      name: 'Linear',
+      provider: 'linear',
+      type: 'mcp',
+      mcp: {
+        transport: 'http',
+        url: 'https://mcp.linear.app',
+        authType: 'oauth'
+      },
+      icon: '🔵',
+      enabled: true
+    });
+    ```
+  </Step>
+  
+  <Step title="Authenticate Source">
+    For OAuth sources, trigger authentication flow:
+    ```typescript
+    import { SourceCredentialManager } from '@craft-agent/shared/sources';
+    
+    const credManager = new SourceCredentialManager();
+    const result = await credManager.authenticate(source, {
+      onStatus: (msg) => console.log(msg),
+      onError: (err) => console.error(err)
+    });
+    ```
+  </Step>
+  
+  <Step title="Build Server Config">
+    ```typescript
+    import { SourceServerBuilder } from '@craft-agent/shared/sources';
+    
+    const builder = new SourceServerBuilder();
+    const token = await credManager.getToken(source);
+    const mcpConfig = builder.buildMcpServer(source, token);
+    ```
+  </Step>
+  
+  <Step title="Connect to Pool">
+    ```typescript
+    await pool.connect('linear', mcpConfig);
+    ```
+  </Step>
+</Steps>
+
+## Runtime Source Switching
+
+Sources can be enabled/disabled without restarting the session:
+
+```typescript
+// Enable a new source
+const newSources = {
+  ...existingServers,
+  'notion': {
+    type: 'http',
+    url: 'https://mcp.notion.com/mcp',
+    headers: { 'Authorization': 'Bearer token' }
+  }
+};
+
+// Sync pool (connects new, keeps existing, disconnects removed)
+await pool.sync(newSources);
+
+// Notify agents of tool changes
+pool.onToolsChanged?.();
+```
+
+<Note>
+  The pool automatically connects new sources, disconnects removed ones, and keeps existing connections alive.
+</Note>
+
+## Large Response Handling
+
+MCP tool results are automatically guarded against large responses:
+
+```typescript
+const result = await pool.callTool('mcp__linear__searchIssues', {
+  query: 'status:open'
+});
+
+// If response > 25KB or binary:
+// 1. Binary files saved to session downloads/
+// 2. Large text responses summarized or saved
+// 3. User receives file path or summary
+```
+
+## Error Handling
+
+<CodeGroup>
+```typescript Connection Errors
+try {
+  await client.connect();
+} catch (error) {
+  // Connection failed during health check
+  console.error('MCP connection failed:', error.message);
+}
+```
+
+```typescript Tool Call Errors
+const result = await pool.callTool('mcp__linear__createIssue', args);
+
+if (result.isError) {
+  console.error('Tool call failed:', result.content);
+}
+```
+
+```typescript Auth Errors
+const result = await credManager.authenticate(source, callbacks);
+
+if (!result.success) {
+  console.error('Authentication failed:', result.error);
+}
+```
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use OAuth for user-scoped data" icon="lock">
+    OAuth tokens are scoped to the authenticated user, ensuring proper access control. Use bearer tokens only for service accounts.
+  </Accordion>
+  
+  <Accordion title="Set meaningful taglines" icon="quote">
+    The tagline helps agents understand when to use this source:
+    ```json
+    "tagline": "Issue tracking, bugs, tasks, sprints"
+    ```
+  </Accordion>
+  
+  <Accordion title="Document in guide.md" icon="book">
+    Provide context about data structure, query patterns, and team conventions so agents use the source effectively.
+  </Accordion>
+  
+  <Accordion title="Test connections regularly" icon="vial">
+    Use `source_test` tool or connection status checks to verify sources remain connected.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Sources" icon="code" href="/features/sources/api-sources">
+    Learn about REST API sources with automatic authentication
+  </Card>
+  
+  <Card title="Local Files" icon="folder" href="/features/sources/local-files">
+    Connect to local filesystems and Obsidian vaults
+  </Card>
+</CardGroup>

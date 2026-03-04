@@ -1,0 +1,369 @@
+---
+title: Custom Endpoints
+description: Connect to OpenRouter, Vercel AI Gateway, Ollama, and custom base URLs
+icon: plug
+---
+
+Craft Agents supports connecting to third-party LLM providers and self-hosted models through custom API endpoints. This includes OpenRouter (access to 200+ models), Vercel AI Gateway, Ollama (local models), and any OpenAI or Anthropic-compatible API.
+
+## Supported Providers
+
+<CardGroup cols={2}>
+  <Card title="OpenRouter" icon="route" href="#openrouter">
+    Access 200+ models through a single API key
+  </Card>
+  <Card title="Vercel AI Gateway" icon="server" href="#vercel-ai-gateway">
+    Route requests with built-in observability and caching
+  </Card>
+  <Card title="Ollama" icon="computer" href="#ollama">
+    Run open-source models locally (Llama, Mistral, etc.)
+  </Card>
+  <Card title="Custom Endpoints" icon="globe" href="#custom-openai-compatible-endpoints">
+    Any OpenAI or Anthropic-compatible API
+  </Card>
+</CardGroup>
+
+## OpenRouter
+
+OpenRouter provides a unified API for 200+ models from multiple providers (Anthropic, OpenAI, Google, Meta, Mistral, and more).
+
+### Setup
+
+<Steps>
+  <Step title="Get your API key">
+    1. Go to [openrouter.ai](https://openrouter.ai/)
+    2. Sign in or create an account
+    3. Navigate to **Keys** in the sidebar
+    4. Click **Create Key**
+    5. Copy your API key (starts with `sk-or-`)
+    
+    <Note>
+      OpenRouter keys work across all models. You only need one key.
+    </Note>
+  </Step>
+
+  <Step title="Add connection in Craft Agents">
+    1. Open **Settings** → **AI Connections**
+    2. Click **Add Connection**
+    3. Select **Claude / Anthropic API Key** (or **OpenAI API Key**)
+    4. Toggle **Custom endpoint**
+    5. Enter endpoint: `https://openrouter.ai/api`
+    6. Paste your OpenRouter API key
+    7. Click **Save**
+  </Step>
+
+  <Step title="Select models">
+    OpenRouter models use the format `provider/model-name`. Examples:
+    - `anthropic/claude-opus-4.6`
+    - `openai/gpt-5`
+    - `google/gemini-2.5-pro`
+    - `meta/llama-3.3-70b`
+    
+    Craft Agents automatically fetches the full list of available models from OpenRouter.
+  </Step>
+</Steps>
+
+### Pricing
+
+OpenRouter uses **pay-per-use** billing with competitive rates:
+
+| Model | Cost (Input/Output) |
+|-------|---------------------|
+| `anthropic/claude-opus-4.6` | $15 / $75 per 1M tokens |
+| `openai/gpt-5` | $15 / $60 per 1M tokens |
+| `google/gemini-2.5-pro` | $1.25 / $5 per 1M tokens |
+| `meta/llama-3.3-70b` | $0.35 / $0.40 per 1M tokens |
+
+Check [openrouter.ai/models](https://openrouter.ai/models) for current pricing.
+
+<Tip>
+  OpenRouter often offers **lower prices** than direct API access, especially for popular models. Some models are even free (community-funded).
+</Tip>
+
+### Privacy Settings
+
+By default, OpenRouter may use your requests for model training. To disable this:
+
+1. Go to [openrouter.ai/settings/privacy](https://openrouter.ai/settings/privacy)
+2. Toggle **Do not train on my data**
+3. Toggle **Do not log my prompts**
+
+<Warning>
+  If you see the error: `OpenRouter blocked this request due to your data policy settings`, enable data logging for the specific model in your OpenRouter privacy settings.
+</Warning>
+
+Source: `packages/shared/src/agent/errors.ts:174`
+
+## Vercel AI Gateway
+
+Vercel AI Gateway acts as a proxy for LLM API calls, adding observability, caching, and rate limiting.
+
+### Setup
+
+<Steps>
+  <Step title="Get your gateway endpoint">
+    1. Go to your Vercel dashboard
+    2. Navigate to **AI Gateway**
+    3. Create a new gateway (or use an existing one)
+    4. Copy the gateway URL (e.g., `https://ai-gateway.vercel.sh/v1/...`)
+  </Step>
+
+  <Step title="Add connection in Craft Agents">
+    1. Open **Settings** → **AI Connections**
+    2. Click **Add Connection**
+    3. Select **Claude / Anthropic API Key**
+    4. Toggle **Custom endpoint**
+    5. Enter your Vercel AI Gateway URL
+    6. Paste your **upstream provider's API key** (e.g., Anthropic or OpenAI key)
+    7. Click **Save**
+  </Step>
+</Steps>
+
+### Benefits
+
+- **Observability**: View all API calls in the Vercel dashboard
+- **Caching**: Reduce costs by caching responses
+- **Rate limiting**: Control usage per user or project
+- **A/B testing**: Route requests to different models
+
+<Note>
+  Vercel AI Gateway is free for hobby projects. Production usage may incur costs based on request volume.
+</Note>
+
+## Ollama
+
+Ollama lets you run open-source LLMs locally on your machine (Mac, Windows, Linux).
+
+### Setup
+
+<Steps>
+  <Step title="Install Ollama">
+    Download and install Ollama from [ollama.com](https://ollama.com/).
+    
+    **macOS / Linux:**
+    ```bash
+    curl -fsSL https://ollama.com/install.sh | sh
+    ```
+    
+    **Windows:**
+    Download the installer from [ollama.com/download](https://ollama.com/download).
+  </Step>
+
+  <Step title="Pull a model">
+    Download a model to run locally:
+    
+    ```bash
+    ollama pull llama3.3:70b
+    ollama pull mistral:7b
+    ollama pull codestral:latest
+    ```
+    
+    See available models at [ollama.com/library](https://ollama.com/library).
+  </Step>
+
+  <Step title="Start Ollama server">
+    Ollama runs as a local server on `http://localhost:11434`:
+    
+    ```bash
+    ollama serve
+    ```
+    
+    <Note>
+      On macOS, Ollama starts automatically in the background after installation.
+    </Note>
+  </Step>
+
+  <Step title="Add connection in Craft Agents">
+    1. Open **Settings** → **AI Connections**
+    2. Click **Add Connection**
+    3. Select **Claude / Anthropic API Key**
+    4. Toggle **Custom endpoint**
+    5. Enter endpoint: `http://localhost:11434`
+    6. Leave API key **blank** (Ollama doesn't require authentication)
+    7. Manually enter your model names (e.g., `llama3.3:70b`, `mistral:7b`)
+    8. Click **Save**
+  </Step>
+</Steps>
+
+### Configuration
+
+Craft Agents treats Ollama as an Anthropic-compatible endpoint:
+
+```typescript
+{
+  providerType: 'anthropic_compat',
+  authType: 'api_key_with_endpoint',
+  baseUrl: 'http://localhost:11434',
+  apiKey: 'ollama', // Placeholder (not used)
+  models: ['llama3.3:70b', 'mistral:7b'],
+}
+```
+
+Source: `packages/shared/src/agent/backend/internal/drivers/anthropic.ts:139`
+
+<Warning>
+  Ollama models run on your local machine. Performance depends on your hardware (CPU, GPU, RAM). Large models like Llama 70B require significant resources.
+</Warning>
+
+### Recommended Models
+
+| Model | Size | Use Case |
+|-------|------|----------|
+| `llama3.3:70b` | 40GB | General reasoning, coding |
+| `codestral:latest` | 22GB | Code generation, debugging |
+| `mistral:7b` | 4GB | Fast, lightweight tasks |
+| `qwen2.5-coder:32b` | 19GB | Coding (excellent quality) |
+
+## Custom OpenAI-Compatible Endpoints
+
+Many LLM providers offer OpenAI-compatible APIs. Examples:
+
+- **Groq** - Ultra-fast inference (https://api.groq.com)
+- **Together AI** - Open models (https://api.together.xyz)
+- **Anyscale** - Hosted models (https://api.endpoints.anyscale.com)
+- **Self-hosted** - vLLM, text-generation-inference, etc.
+
+### Setup
+
+<Steps>
+  <Step title="Get endpoint and API key">
+    Obtain your provider's:
+    - Base URL (e.g., `https://api.groq.com/openai/v1`)
+    - API key (provider-specific format)
+  </Step>
+
+  <Step title="Add connection in Craft Agents">
+    1. Open **Settings** → **AI Connections**
+    2. Click **Add Connection**
+    3. Select **OpenAI API Key**
+    4. Toggle **Custom endpoint**
+    5. Enter the provider's base URL
+    6. Paste your API key
+    7. Specify available models (or let Craft Agents fetch them)
+    8. Click **Save**
+  </Step>
+</Steps>
+
+## Custom Anthropic-Compatible Endpoints
+
+For services that implement the Anthropic Messages API:
+
+<Steps>
+  <Step title="Get endpoint and API key">
+    Obtain your provider's:
+    - Base URL (e.g., `https://your-proxy.com/v1`)
+    - API key or bearer token
+  </Step>
+
+  <Step title="Add connection in Craft Agents">
+    1. Open **Settings** → **AI Connections**
+    2. Click **Add Connection**
+    3. Select **Claude / Anthropic API Key**
+    4. Toggle **Custom endpoint**
+    5. Enter the provider's base URL
+    6. Paste your API key
+    7. Specify available models
+    8. Click **Save**
+  </Step>
+</Steps>
+
+## Architecture: Compat Providers
+
+Craft Agents uses **compat providers** for custom endpoints:
+
+- **`anthropic_compat`**: Anthropic Messages API format
+- **`pi_compat`**: OpenAI Chat Completions API format
+
+These providers:
+- Require explicit `baseUrl` configuration
+- Need manual model lists (cannot auto-detect)
+- Use the same credential system as native providers
+
+Source: `packages/shared/src/config/llm-connections.ts:335-356`
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Connection refused">
+    **Error:** `Cannot connect to API server. Check the URL and ensure the server is running.`
+    
+    **Solutions:**
+    - Verify the base URL is correct (check for typos)
+    - Ensure the server is running (for Ollama: `ollama serve`)
+    - Check firewall settings (allow connections to the custom port)
+    - For local servers: Use `http://localhost:11434` (not `127.0.0.1`)
+  </Accordion>
+
+  <Accordion title="Authentication failed">
+    **Error:** `Authentication failed. Check your API key or OAuth token.`
+    
+    **Solutions:**
+    - Verify you copied the full API key (no extra whitespace)
+    - For Ollama: Leave the API key blank or use a placeholder like `ollama`
+    - For OpenRouter: Ensure your key starts with `sk-or-`
+    - Check that your API key is valid on the provider's dashboard
+  </Accordion>
+
+  <Accordion title="Endpoint not found (404)">
+    **Error:** `Endpoint not found. Ensure the server supports the Anthropic Messages API.`
+    
+    The custom endpoint doesn't implement the expected API format:
+    - For Anthropic-compatible: Endpoint should support `/v1/messages`
+    - For OpenAI-compatible: Endpoint should support `/v1/chat/completions`
+    - Check the provider's API documentation
+  </Accordion>
+
+  <Accordion title="Model not available">
+    **Error:** `Model not found. Check the connection configuration.`
+    
+    **Solutions:**
+    - For Ollama: Ensure you ran `ollama pull <model>` before using it
+    - For OpenRouter: Check model availability at [openrouter.ai/models](https://openrouter.ai/models)
+    - Verify the model ID format matches the provider's requirements
+    - Manually add the model ID to the connection's model list
+  </Accordion>
+</AccordionGroup>
+
+## Example: OpenRouter with Multiple Models
+
+Here's how to configure OpenRouter for maximum flexibility:
+
+<Steps>
+  <Step title="Add connection">
+    ```
+    Name: OpenRouter
+    Endpoint: https://openrouter.ai/api
+    API Key: sk-or-v1-...
+    ```
+  </Step>
+
+  <Step title="Add your favorite models">
+    ```
+    anthropic/claude-opus-4.6
+    anthropic/claude-sonnet-4.6
+    openai/gpt-5
+    google/gemini-2.5-pro
+    meta/llama-3.3-70b
+    mistralai/mistral-large
+    ```
+  </Step>
+
+  <Step title="Set default model">
+    Choose `anthropic/claude-sonnet-4.6` for the best balance of quality and speed.
+  </Step>
+
+  <Step title="Use in sessions">
+    Switch between models mid-conversation by changing the model selector in the chat interface.
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure Permissions" icon="shield-check" href="/customization/permissions">
+    Control what agents can do with custom endpoints
+  </Card>
+  <Card title="Add Sources" icon="plug" href="/integrations/sources/overview">
+    Connect MCP servers and APIs to your sessions
+  </Card>
+</CardGroup>

@@ -1,0 +1,236 @@
+---
+title: Installation
+description: Get Craft Agents running on macOS, Linux, or Windows in seconds
+---
+
+## One-Line Install (Recommended)
+
+The fastest way to get started is with our install script:
+
+<CodeGroup>
+```bash macOS / Linux
+curl -fsSL https://agents.craft.do/install-app.sh | bash
+```
+
+```powershell Windows (PowerShell)
+irm https://agents.craft.do/install-app.ps1 | iex
+```
+</CodeGroup>
+
+<Note>
+The install script downloads the latest release for your platform and installs it in the standard location.
+</Note>
+
+## System Requirements
+
+### macOS
+- **OS Version**: macOS 11 (Big Sur) or later
+- **Architecture**: Intel (x86_64) or Apple Silicon (arm64)
+- **Disk Space**: ~300 MB for app + storage for sessions
+
+### Linux
+- **OS**: Ubuntu 20.04+, Debian 11+, Fedora 36+, or equivalent
+- **Architecture**: x86_64 or arm64
+- **Dependencies**: Standard desktop environment (GTK+ or Qt)
+- **Disk Space**: ~300 MB for app + storage for sessions
+
+### Windows
+- **OS Version**: Windows 10 (1903) or later, Windows 11
+- **Architecture**: x86_64 or arm64
+- **Disk Space**: ~300 MB for app + storage for sessions
+
+<Warning>
+Craft Agents is a desktop application. It does **not** run in a browser or as a CLI tool.
+</Warning>
+
+## Build from Source
+
+If you want to customize Craft Agents or contribute to development:
+
+<Steps>
+  <Step title="Install Bun">
+    Craft Agents uses [Bun](https://bun.sh) as its runtime:
+    
+    ```bash
+    curl -fsSL https://bun.sh/install | bash
+    ```
+  </Step>
+
+  <Step title="Clone the Repository">
+    ```bash
+    git clone https://github.com/lukilabs/craft-agents-oss.git
+    cd craft-agents-oss
+    ```
+  </Step>
+
+  <Step title="Install Dependencies">
+    ```bash
+    bun install
+    ```
+  </Step>
+
+  <Step title="Run in Development Mode">
+    For hot-reload development:
+    
+    ```bash
+    bun run electron:dev
+    ```
+    
+    Or build and run:
+    
+    ```bash
+    bun run electron:start
+    ```
+  </Step>
+</Steps>
+
+### Development Commands
+
+```bash
+# Hot reload development
+bun run electron:dev
+
+# Build and run
+bun run electron:start
+
+# Type checking
+bun run typecheck:all
+
+# Run tests
+bun test
+
+# Lint code
+bun run lint
+```
+
+<Tip>
+Debug logs are automatically enabled in development mode. Check:
+- **macOS**: `~/Library/Logs/@craft-agent/electron/main.log`
+- **Linux**: `~/.config/@craft-agent/electron/logs/main.log`
+- **Windows**: `%APPDATA%\@craft-agent\electron\logs\main.log`
+</Tip>
+
+### Build for Distribution
+
+<CodeGroup>
+```bash macOS
+bun run electron:dist:mac
+```
+
+```bash Windows
+bun run electron:dist:win
+```
+
+```bash Linux
+bun run electron:dist:linux
+```
+
+```bash All Platforms
+bun run electron:dist
+```
+</CodeGroup>
+
+Built packages appear in `dist/` directory.
+
+## Environment Variables (Optional)
+
+OAuth integrations for Slack and Microsoft require credentials baked into the build. Create a `.env` file in the project root:
+
+```bash .env
+MICROSOFT_OAUTH_CLIENT_ID=your-client-id
+SLACK_OAUTH_CLIENT_ID=your-slack-client-id
+SLACK_OAUTH_CLIENT_SECRET=your-slack-client-secret
+```
+
+<Note>
+**Google OAuth** credentials are NOT baked into the build. Users provide their own credentials when setting up Google sources (Gmail, Calendar, Drive).
+</Note>
+
+## Troubleshooting
+
+### App Won't Launch
+
+<Steps>
+  <Step title="Check System Requirements">
+    Verify your OS version meets the minimum requirements listed above.
+  </Step>
+
+  <Step title="Enable Debug Logging">
+    Launch the app with the `--debug` flag:
+    
+    <CodeGroup>
+    ```bash macOS
+    /Applications/Craft\ Agents.app/Contents/MacOS/Craft\ Agents -- --debug
+    ```
+    
+    ```powershell Windows
+    & "$env:LOCALAPPDATA\Programs\@craft-agentelectron\Craft Agents.exe" -- --debug
+    ```
+    
+    ```bash Linux
+    ./craft-agents -- --debug
+    ```
+    </CodeGroup>
+    
+    Note the double dash (`--`) separator before `--debug`.
+  </Step>
+
+  <Step title="Check Logs">
+    Logs are written to:
+    - **macOS**: `~/Library/Logs/@craft-agent/electron/main.log`
+    - **Windows**: `%APPDATA%\@craft-agent\electron\logs\main.log`
+    - **Linux**: `~/.config/@craft-agent/electron/logs/main.log`
+  </Step>
+</Steps>
+
+### Installation Script Fails
+
+**Network issues:**
+- Check your internet connection
+- Try downloading the release manually from [GitHub Releases](https://github.com/lukilabs/craft-agents-oss/releases)
+
+**Permission errors:**
+- macOS: You may need to allow the app in System Settings → Privacy & Security
+- Linux: Ensure the AppImage has execute permissions: `chmod +x Craft-Agents-*.AppImage`
+- Windows: Run PowerShell as Administrator if installation fails
+
+### "App is Damaged" (macOS)
+
+If you see "Craft Agents is damaged and can't be opened":
+
+```bash
+xattr -cr /Applications/Craft\ Agents.app
+```
+
+Then try launching again. This removes the quarantine attribute that macOS adds to downloaded apps.
+
+### Build from Source Issues
+
+**Bun not found:**
+```bash
+# Ensure Bun is in your PATH
+export PATH="$HOME/.bun/bin:$PATH"
+```
+
+**Node/npm version conflicts:**
+Craft Agents requires Bun, not Node.js. If you have Node.js installed, Bun will still work independently.
+
+**Electron build fails:**
+```bash
+# Clean build artifacts and rebuild
+bun run electron:clean
+bun install
+bun run electron:build
+```
+
+### Still Having Issues?
+
+Check the [GitHub Issues](https://github.com/lukilabs/craft-agents-oss/issues) or open a new issue with:
+- Your OS and version
+- Installation method used
+- Complete error message
+- Contents of debug log (if available)
+
+<Card title="Next: Quick Start" icon="rocket" href="/quickstart">
+  Now that Craft Agents is installed, let's create your first session
+</Card>

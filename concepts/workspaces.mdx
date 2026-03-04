@@ -1,0 +1,371 @@
+---
+title: 'Workspaces'
+description: 'Project-scoped configuration with isolated sources and sessions'
+icon: 'folder-tree'
+---
+
+## What is a Workspace?
+
+A **workspace** represents a project or codebase with its own configuration, sources, and sessions. Workspaces provide isolation boundaries for:
+
+- **Sources** - MCP servers and API connections
+- **Sessions** - Conversation history and state
+- **Themes** - Custom color schemes
+- **Permissions** - Custom safety rules
+- **Statuses** - Workflow labels (Todo, In Progress, Done, etc.)
+
+<Info>
+Workspaces are the **configuration boundary**, while sessions are the **conversation boundary**. Think of workspaces as projects, and sessions as conversations within those projects.
+</Info>
+
+## Workspace Structure
+
+Each workspace is stored at `~/.craft-agent/workspaces/{workspace-id}/`:
+
+```
+~/.craft-agent/workspaces/ws-abc123/
+├── config.json         # Workspace metadata
+├── theme.json          # Theme overrides (optional)
+├── permissions.json    # Permission rules (optional)
+├── statuses/
+│   └── config.json     # Custom workflow statuses
+├── sources/
+│   ├── linear/
+│   │   ├── config.json # Source configuration
+│   │   └── guide.md    # Usage guidelines
+│   └── github/
+│       ├── config.json
+│       └── guide.md
+└── sessions/
+    ├── session-1/
+    │   └── session.jsonl
+    └── session-2/
+        └── session.jsonl
+```
+
+## Workspace Configuration
+
+The `config.json` file contains workspace metadata:
+
+```typescript
+interface Workspace {
+  id: string;              // Unique identifier (e.g., "ws-abc123")
+  name: string;            // Display name from workspace folder
+  rootPath: string;        // Absolute path to workspace folder
+  createdAt: number;       // Unix timestamp
+  lastAccessedAt?: number; // For sorting recent workspaces
+  iconUrl?: string;        // Custom icon path
+  mcpUrl?: string;         // Workspace-level MCP server URL
+  mcpAuthType?: McpAuthType; // 'workspace_oauth' | 'workspace_bearer' | 'public'
+}
+```
+
+### Example Configuration
+
+<CodeGroup>
+```json config.json
+{
+  "id": "ws-2024-01-15-craft-agent",
+  "name": "Craft Agent",
+  "rootPath": "/Users/alice/Projects/craft-agent",
+  "createdAt": 1705334400000,
+  "lastAccessedAt": 1705420800000,
+  "iconUrl": "/Users/alice/Projects/craft-agent/.craft-icon.png"
+}
+```
+
+```json theme.json
+{
+  "colors": {
+    "background": "#1e1e2e",
+    "foreground": "#cdd6f4",
+    "accent": "#8B5CF6",
+    "info": "#89b4fa",
+    "success": "#a6e3a1",
+    "destructive": "#f38ba8"
+  }
+}
+```
+
+```json permissions.json
+{
+  "blockedTools": ["Bash"],
+  "allowedBashPatterns": ["^ls", "^pwd", "^cat"],
+  "allowedWritePaths": ["./docs/**", "./config/*.json"]
+}
+```
+</CodeGroup>
+
+## Workspace Storage Location
+
+### Default Location
+
+Workspaces are stored at `~/.craft-agent/workspaces/` by default:
+
+```typescript
+import { join } from 'path';
+import { homedir } from 'os';
+
+const CONFIG_DIR = join(homedir(), '.craft-agent');
+const WORKSPACES_DIR = join(CONFIG_DIR, 'workspaces');
+```
+
+### Workspace ID Format
+
+Workspace IDs are generated from the creation date and folder name:
+
+```typescript
+// Format: ws-YYYY-MM-DD-{sanitized-folder-name}
+const workspaceId = `ws-${dateStr}-${sanitizedName}`;
+
+// Example: ws-2024-01-15-my-project
+```
+
+<Note>
+Workspace IDs are **stable** and don't change if you rename the workspace folder. The `name` field is read from the folder name on each launch.
+</Note>
+
+## Multiple Workspaces
+
+Craft Agents supports multiple workspaces with independent configurations:
+
+```typescript
+import { loadStoredConfig } from '@craft-agent/shared/config';
+
+const config = loadStoredConfig();
+
+// List all workspaces
+config.workspaces.forEach(workspace => {
+  console.log(`${workspace.name} (${workspace.id})`);
+  console.log(`  Path: ${workspace.rootPath}`);
+  console.log(`  Sessions: ${workspace.sessions?.length || 0}`);
+});
+
+// Active workspace
+const activeWorkspace = config.workspaces.find(
+  ws => ws.id === config.activeWorkspaceId
+);
+```
+
+### Workspace Discovery
+
+Workspaces are auto-discovered in the default location:
+
+```typescript
+import { discoverWorkspacesInDefaultLocation } from '@craft-agent/shared/workspaces';
+
+// Scans ~/.craft-agent/workspaces/ for valid workspace folders
+const workspaces = discoverWorkspacesInDefaultLocation();
+```
+
+## Creating a Workspace
+
+### Programmatic Creation
+
+```typescript
+import { createWorkspaceAtPath } from '@craft-agent/shared/workspaces';
+
+const workspace = await createWorkspaceAtPath(
+  '/Users/alice/Projects/my-app',
+  'My App'
+);
+
+console.log(`Created workspace: ${workspace.id}`);
+// Output: ws-2024-01-15-my-app
+```
+
+### Validation
+
+Workspaces must have:
+
+1. A valid `config.json` with `id`, `name`, and `rootPath`
+2. A `sources/` directory
+3. A `sessions/` directory
+
+```typescript
+import { isValidWorkspace } from '@craft-agent/shared/workspaces';
+
+if (isValidWorkspace('/path/to/workspace')) {
+  console.log('Valid workspace');
+}
+```
+
+## Workspace-Level Sources
+
+Sources (MCP servers and API connections) are scoped to workspaces:
+
+```
+workspaces/ws-abc123/sources/
+├── linear/
+│   ├── config.json     # Linear MCP configuration
+│   └── guide.md        # Usage guidelines
+├── github/
+│   ├── config.json     # GitHub API configuration
+│   └── guide.md
+└── notion/
+    ├── config.json
+    └── guide.md
+```
+
+Each source has:
+
+- **config.json** - Connection settings (command, args, env, auth)
+- **guide.md** - Usage instructions shown to the agent on first use
+
+<Card title="Learn More About Sources" icon="plug" href="/features/sources/overview">
+  Deep dive into source configuration and types
+</Card>
+
+## Workspace-Level Permissions
+
+Custom permission rules override global defaults:
+
+```typescript
+import { loadWorkspacePermissions } from '@craft-agent/shared/config';
+
+const permissions = loadWorkspacePermissions(workspace.rootPath);
+
+if (permissions) {
+  console.log('Blocked tools:', permissions.blockedTools);
+  console.log('Allowed paths:', permissions.allowedWritePaths);
+}
+```
+
+### Additive Merging
+
+Workspace permissions **extend** global defaults:
+
+```json
+// Global defaults
+{
+  "blockedTools": ["Admin"],
+  "allowedBashPatterns": ["^ls", "^pwd"]
+}
+
+// Workspace override
+{
+  "blockedTools": ["Bash"],          // Adds to global list
+  "allowedWritePaths": ["./docs/**"] // New restriction
+}
+
+// Effective rules: blockedTools = ["Admin", "Bash"]
+```
+
+<Card title="Permission Configuration" icon="shield" href="/features/permissions/modes">
+  Learn about permission rules and safe mode
+</Card>
+
+## Workspace Themes
+
+Workspaces can override the global theme:
+
+```typescript
+import { resolveTheme } from '@craft-agent/shared/config/theme';
+
+// Cascading theme resolution: workspace → app → default
+const theme = resolveTheme(workspace.rootPath);
+
+console.log('Accent color:', theme.colors.accent);
+// Output: #8B5CF6
+```
+
+### 6-Color System
+
+Themes define 6 semantic colors:
+
+<ParamField path="background" type="string" required>
+  Background color (canvas, panels)
+</ParamField>
+
+<ParamField path="foreground" type="string" required>
+  Text and icon color
+</ParamField>
+
+<ParamField path="accent" type="string" required>
+  Primary brand color (buttons, links) - default `#8B5CF6`
+</ParamField>
+
+<ParamField path="info" type="string" required>
+  Informational color (badges, status)
+</ParamField>
+
+<ParamField path="success" type="string" required>
+  Success states (completed tasks)
+</ParamField>
+
+<ParamField path="destructive" type="string" required>
+  Error and destructive actions
+</ParamField>
+
+## Switching Workspaces
+
+```typescript
+import { loadStoredConfig, saveStoredConfig } from '@craft-agent/shared/config';
+
+const config = loadStoredConfig();
+config.activeWorkspaceId = 'ws-2024-01-15-new-project';
+saveStoredConfig(config);
+```
+
+Switching workspaces:
+
+1. Closes all sessions in the current workspace
+2. Loads sources from the new workspace
+3. Restores the last active session (if any)
+
+<Warning>
+Switching workspaces **aborts all running sessions** in the current workspace. Save your work before switching.
+</Warning>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="One Workspace Per Project">
+    Create a dedicated workspace for each codebase or project. This ensures:
+    - Sources are project-specific (e.g., Linear for project A, Jira for project B)
+    - Sessions don't mix contexts from different projects
+    - Themes and permissions match the project's needs
+  </Accordion>
+
+  <Accordion title="Use Descriptive Names">
+    Workspace names appear in the UI and file paths. Use clear, memorable names:
+    - Good: `craft-agent`, `personal-website`, `client-acme`
+    - Bad: `project1`, `test`, `new-workspace-2`
+  </Accordion>
+
+  <Accordion title="Configure Permissions Early">
+    Set up workspace-level permissions before enabling sources:
+    ```json
+    {
+      "allowedWritePaths": ["./src/**", "./docs/**"],
+      "blockedTools": ["Admin"],
+      "allowedBashPatterns": ["^git", "^npm"]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Version Control guide.md">
+    Source `guide.md` files contain usage instructions. Commit them to git:
+    ```bash
+    git add .craft-agent/workspaces/*/sources/*/guide.md
+    git commit -m "Add source usage guides"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Concepts
+
+<CardGroup cols={2}>
+  <Card title="Sessions" icon="messages" href="/concepts/sessions">
+    Conversation boundaries within workspaces
+  </Card>
+  <Card title="Sources" icon="plug" href="/features/sources/overview">
+    Configure MCP servers and API connections
+  </Card>
+  <Card title="Permissions" icon="shield" href="/features/permissions/modes">
+    Custom safety rules and safe mode
+  </Card>
+  <Card title="Themes" icon="palette" href="/features/themes/overview">
+    Color schemes and visual customization
+  </Card>
+</CardGroup>

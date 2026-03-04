@@ -1,0 +1,464 @@
+---
+title: Automation Examples
+description: Real-world automation recipes and patterns for common workflows
+---
+
+Here are practical automation examples you can adapt for your workflows.
+
+## Daily Standup Automation
+
+Generate a daily standup report every weekday morning.
+
+```json
+{
+  "SchedulerTick": [
+    {
+      "name": "Daily Standup",
+      "cron": "0 9 * * 1-5",
+      "timezone": "America/New_York",
+      "labels": ["Scheduled", "Standup"],
+      "permissionMode": "ask",
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Generate today's standup report:\n\n1. Check @github for issues assigned to me\n2. Check @linear for tasks in progress\n3. Summarise blockers and progress\n\nDate: $CRAFT_LOCAL_DATE"
+        }
+      ]
+    }
+  ]
+}
+```
+
+<Steps>
+  <Step title="Set the schedule">
+    Use `0 9 * * 1-5` for weekdays at 9:00 AM. Adjust to your timezone.
+  </Step>
+  
+  <Step title="Reference sources">
+    Use `@github` and `@linear` to pull data from connected sources.
+  </Step>
+  
+  <Step title="Apply labels">
+    Add `Scheduled` and `Standup` labels for easy filtering.
+  </Step>
+</Steps>
+
+---
+
+## Urgent Label Triage
+
+Automatically triage sessions marked as urgent.
+
+```json
+{
+  "LabelAdd": [
+    {
+      "name": "Urgent Triage",
+      "matcher": "^urgent$",
+      "labels": ["Automated", "Needs Review"],
+      "permissionMode": "safe",
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "URGENT: Session '$CRAFT_SESSION_NAME' needs immediate attention.\n\nAnalyze:\n1. Root cause\n2. Impact\n3. Immediate actions needed\n4. Assign priority level\n\nSession ID: $CRAFT_SESSION_ID"
+        }
+      ]
+    }
+  ]
+}
+```
+
+<Note>
+This uses `safe` mode (read-only) to prevent accidental changes during triage.
+</Note>
+
+---
+
+## Track Permission Escalation
+
+Log when sessions are elevated to full auto mode.
+
+```json
+{
+  "PermissionModeChange": [
+    {
+      "name": "Track Privilege Escalation",
+      "matcher": "^allow-all$",
+      "labels": ["High Privilege", "Audit"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "⚠️ PRIVILEGE ESCALATION ALERT\n\nSession: $CRAFT_SESSION_NAME\nMode: $CRAFT_OLD_MODE → $CRAFT_NEW_MODE\nTime: $CRAFT_LOCAL_TIME\n\nLog this event and monitor for unsafe operations.",
+          "llmConnection": "anthropic-audit"
+        }
+      ]
+    }
+  ]
+}
+```
+
+<Note>
+You can route security-related prompts to a dedicated LLM connection using `llmConnection`.
+</Note>
+
+---
+
+## Weekly Summary Report
+
+Generate a weekly summary every Friday afternoon.
+
+```json
+{
+  "SchedulerTick": [
+    {
+      "name": "Weekly Summary",
+      "cron": "0 17 * * 5",
+      "timezone": "Europe/London",
+      "labels": ["Weekly Report"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "📊 WEEKLY SUMMARY - $CRAFT_LOCAL_DATE\n\nGenerate a comprehensive report:\n\n1. @linear: Completed tasks this week\n2. @github: Merged PRs and commits\n3. @slack: Key discussions and decisions\n4. Blockers encountered\n5. Goals for next week\n\nFormat as markdown with sections.",
+          "model": "claude-sonnet-4"
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Auto-Archive Completed Sessions
+
+Move completed sessions to Done status and archive.
+
+```json
+{
+  "SessionStatusChange": [
+    {
+      "name": "Archive Completed Work",
+      "matcher": "^Done$",
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Session '$CRAFT_SESSION_NAME' marked as Done.\n\nPerform cleanup:\n1. Extract key outcomes\n2. Archive artifacts\n3. Update project docs\n4. Close related tasks in @linear\n\nPrevious status: $CRAFT_OLD_STATE"
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Monitor Specific Tools
+
+Track when specific tools are used (future feature).
+
+```json
+{
+  "PostToolUse": [
+    {
+      "name": "Track File Deletions",
+      "matcher": "^bash$",
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Bash command executed. Review for file system changes and log if necessary."
+        }
+      ]
+    }
+  ]
+}
+```
+
+<Note>
+Agent event automations (PreToolUse, PostToolUse, etc.) are currently in development for full automation support.
+</Note>
+
+---
+
+## Multi-Label Tracking
+
+Track multiple label patterns with different actions.
+
+```json
+{
+  "LabelAdd": [
+    {
+      "name": "Track Bug Reports",
+      "matcher": "^bug-",
+      "labels": ["Bug Triage"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Bug reported in session: $CRAFT_SESSION_NAME\n\nLabel: $CRAFT_LABEL\n\nPerform initial triage and categorize severity."
+        }
+      ]
+    },
+    {
+      "name": "Track Feature Requests",
+      "matcher": "^feature-",
+      "labels": ["Feature Planning"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Feature request logged: $CRAFT_SESSION_NAME\n\nLabel: $CRAFT_LABEL\n\nEvaluate feasibility and estimate effort."
+        }
+      ]
+    },
+    {
+      "name": "Track High Priority",
+      "matcher": "^(urgent|critical|p0)$",
+      "labels": ["High Priority"],
+      "permissionMode": "allow-all",
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "HIGH PRIORITY: $CRAFT_LABEL added to $CRAFT_SESSION_NAME\n\nTake immediate action:
+1. Notify team in @slack\n2. Create tracking issue in @linear\n3. Begin resolution"
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Scheduled Health Checks
+
+Perform system health checks at regular intervals.
+
+```json
+{
+  "SchedulerTick": [
+    {
+      "name": "Hourly Health Check",
+      "cron": "0 * * * *",
+      "timezone": "UTC",
+      "labels": ["System Health"],
+      "permissionMode": "safe",
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Perform health check at $CRAFT_LOCAL_TIME:\n\n1. Check system resources\n2. Verify active connections\n3. Review error logs\n4. Report anomalies"
+        }
+      ]
+    },
+    {
+      "name": "Daily Backup Reminder",
+      "cron": "0 2 * * *",
+      "timezone": "America/Los_Angeles",
+      "labels": ["Backup"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Daily backup verification:\n\n1. Check backup status\n2. Verify integrity\n3. Test restore capability\n4. Report any issues"
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Dynamic Label-Based Routing
+
+Route different labels to specialized handlers.
+
+```json
+{
+  "LabelAdd": [
+    {
+      "name": "Security Review",
+      "matcher": "^security-",
+      "labels": ["Security Team"],
+      "permissionMode": "safe",
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Security issue detected: $CRAFT_LABEL\n\nSession: $CRAFT_SESSION_NAME\n\nPerform security audit and risk assessment.",
+          "llmConnection": "security-specialist",
+          "model": "claude-opus-4"
+        }
+      ]
+    },
+    {
+      "name": "Code Review",
+      "matcher": "^review-",
+      "labels": ["Code Review"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Code review requested: $CRAFT_LABEL\n\nReview @github changes and provide feedback on:\n1. Code quality\n2. Best practices\n3. Potential issues\n4. Optimization opportunities"
+        }
+      ]
+    },
+    {
+      "name": "Documentation",
+      "matcher": "^docs-",
+      "labels": ["Documentation"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Documentation task: $CRAFT_LABEL\n\nSession: $CRAFT_SESSION_NAME\n\nGenerate or update documentation based on session context."
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Session Lifecycle Automation
+
+Automate the full lifecycle from creation to completion.
+
+```json
+{
+  "LabelAdd": [
+    {
+      "name": "Initialize New Tasks",
+      "matcher": "^new-task$",
+      "labels": ["Initialized"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "New task created: $CRAFT_SESSION_NAME\n\nSetup:\n1. Create tracking issue in @linear\n2. Set up branch in @github\n3. Initialize documentation\n4. Notify team in @slack"
+        }
+      ]
+    }
+  ],
+  "SessionStatusChange": [
+    {
+      "name": "Task In Progress",
+      "matcher": "^In Progress$",
+      "labels": ["Active"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Task started: $CRAFT_SESSION_NAME\n\nUpdate status in @linear and begin tracking time."
+        }
+      ]
+    },
+    {
+      "name": "Task Review",
+      "matcher": "^Needs Review$",
+      "labels": ["Review Queue"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Task ready for review: $CRAFT_SESSION_NAME\n\nCreate PR in @github and request review from team."
+        }
+      ]
+    },
+    {
+      "name": "Task Complete",
+      "matcher": "^Done$",
+      "labels": ["Completed"],
+      "actions": [
+        {
+          "type": "prompt",
+          "prompt": "Task completed: $CRAFT_SESSION_NAME\n\nFinalize:\n1. Merge PR in @github\n2. Close issue in @linear\n3. Update docs\n4. Notify stakeholders in @slack"
+        }
+      ]
+    }
+  ]
+}
+```
+
+---
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Descriptive Names" icon="tag">
+    Add `name` fields to your matchers for easy identification in logs.
+  </Card>
+  
+  <Card title="Apply Labels" icon="bookmark">
+    Use labels to categorize automated sessions for filtering and reporting.
+  </Card>
+  
+  <Card title="Choose Permission Modes Wisely" icon="shield">
+    Use `safe` for read-only, `ask` for user approval, `allow-all` only when necessary.
+  </Card>
+  
+  <Card title="Reference Sources" icon="link">
+    Use `@source` syntax to connect to external services like GitHub, Linear, and Slack.
+  </Card>
+  
+  <Card title="Test Regex Patterns" icon="code">
+    Test your matcher patterns before deploying to ensure they match correctly.
+  </Card>
+  
+  <Card title="Use Environment Variables" icon="dollar-sign">
+    Leverage `$CRAFT_*` variables for dynamic prompts.
+  </Card>
+</CardGroup>
+
+## Testing Your Automations
+
+<Steps>
+  <Step title="Ask the agent">
+    Ask the agent to create an automation: "Set up an automation to track urgent labels"
+  </Step>
+  
+  <Step title="Review the config">
+    Check `~/.craft-agent/workspaces/{id}/automations.json` to verify the configuration.
+  </Step>
+  
+  <Step title="Trigger the event">
+    Manually trigger the event (e.g., add a label) to test the automation.
+  </Step>
+  
+  <Step title="Check the history">
+    Review `automations-history.jsonl` to see execution logs.
+  </Step>
+  
+  <Step title="Iterate and refine">
+    Adjust matchers, prompts, and labels based on results.
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<Accordion title="Automation not triggering">
+- Verify the `enabled` field is `true` or omitted
+- Check that the regex pattern matches the event data
+- Review the cron expression and timezone for SchedulerTick
+- Check `automations-history.jsonl` for error logs
+</Accordion>
+
+<Accordion title="Wrong events being matched">
+- Test your regex pattern using a regex tester
+- Use `^` and `$` anchors for exact matches
+- Escape special characters in patterns
+</Accordion>
+
+<Accordion title="Prompts not executing">
+- Verify the prompt action is correctly formatted
+- Check that referenced sources (e.g., `@github`) are connected
+- Ensure the workspace has a default LLM connection
+</Accordion>
+
+<Accordion title="Environment variables not expanding">
+- Use the correct syntax: `$CRAFT_VAR` or `${CRAFT_VAR}`
+- Check that the variable is available for the event type
+- Review the event-specific variables in the Events reference
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="book" href="/features/automations/overview">
+    Learn the basics of automation configuration
+  </Card>
+  <Card title="Events Reference" icon="calendar" href="/features/automations/events">
+    Complete reference of all automation events
+  </Card>
+</CardGroup>
