@@ -1,0 +1,176 @@
+{
+  "projectType": "saas",
+  "projectName": "Craft Agents",
+  "projectDescription": "Agent-native desktop application for working with AI agents, featuring multi-session management, MCP integration, and extensible skills.",
+  "theme": "palm",
+  "primaryColor": "#8B5CF6",
+  "lightColor": "#A78BFA",
+  "darkColor": "#7C3AED",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Product",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/overview",
+              "concepts/workspaces",
+              "concepts/sessions",
+              "concepts/agents"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Features",
+        "groups": [
+          {
+            "group": "Session Management",
+            "pages": [
+              "features/sessions/overview",
+              "features/sessions/inbox",
+              "features/sessions/statuses",
+              "features/sessions/labels"
+            ]
+          },
+          {
+            "group": "Sources & Integrations",
+            "pages": [
+              "features/sources/overview",
+              "features/sources/mcp-servers",
+              "features/sources/api-sources",
+              "features/sources/local-files"
+            ]
+          },
+          {
+            "group": "Skills & Customization",
+            "pages": [
+              "features/skills/overview",
+              "features/skills/creating-skills",
+              "features/skills/importing"
+            ]
+          },
+          {
+            "group": "Permissions & Security",
+            "pages": [
+              "features/permissions/modes",
+              "features/permissions/configuration",
+              "features/permissions/security"
+            ]
+          },
+          {
+            "group": "Automations",
+            "pages": [
+              "features/automations/overview",
+              "features/automations/events",
+              "features/automations/examples"
+            ]
+          },
+          {
+            "group": "Themes & UI",
+            "pages": [
+              "features/themes/overview",
+              "features/themes/customization"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Integrations",
+        "groups": [
+          {
+            "group": "LLM Providers",
+            "pages": [
+              "integrations/llm/anthropic",
+              "integrations/llm/google-ai",
+              "integrations/llm/openai",
+              "integrations/llm/github-copilot",
+              "integrations/llm/custom-endpoints"
+            ]
+          },
+          {
+            "group": "External Services",
+            "pages": [
+              "integrations/services/google-oauth",
+              "integrations/services/slack",
+              "integrations/services/microsoft"
+            ]
+          },
+          {
+            "group": "MCP Servers",
+            "pages": [
+              "integrations/mcp/overview",
+              "integrations/mcp/craft-mcp",
+              "integrations/mcp/custom-servers"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Development",
+        "groups": [
+          {
+            "group": "Architecture",
+            "pages": [
+              "development/architecture/overview",
+              "development/architecture/electron-app",
+              "development/architecture/packages",
+              "development/architecture/agent-backends"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "development/contributing/setup",
+              "development/contributing/building",
+              "development/contributing/guidelines"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "development/reference/configuration",
+              "development/reference/deep-linking",
+              "development/reference/troubleshooting"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-session inbox with workflow statuses",
+    "MCP server and REST API integration",
+    "Three-level permission system (Explore, Ask to Edit, Auto)",
+    "Multiple LLM provider support (Anthropic, Google AI, OpenAI, GitHub Copilot)",
+    "Custom skills and automations",
+    "Dynamic status workflows",
+    "Encrypted credential storage",
+    "Theme customization",
+    "File attachments and drag-drop support",
+    "Background task execution"
+  ],
+  "publicApiSurface": [
+    "craftagents:// deep linking protocol",
+    "Session management API (SessionManager)",
+    "MCP client pool (McpClientPool)",
+    "CraftAgent class",
+    "Permission modes: safe, ask, allow-all",
+    "Source types: mcp, api, local, gmail",
+    "OAuth integrations: Google, Slack, Microsoft",
+    "Automation events: LabelAdd, SessionStart, SchedulerTick",
+    "Theme configuration API",
+    "Credential manager (AES-256-GCM encrypted)",
+    "Session-scoped tools: source_test, config_validate",
+    "Status CRUD operations"
+  ]
+}
